@@ -198,6 +198,93 @@
   margin-top: 26px;
 }
 
+.leave-requests-page {
+  min-height: 100vh;
+}
+
+.leave-access-page-card {
+  width: min(100% - 40px, 560px);
+  margin: 0;
+}
+
+.leave-access-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+}
+
+.leave-access-page-card h1 {
+  margin: 5px 0 0;
+  color: #071a30;
+  font-size: 30px;
+}
+
+.leave-approval-note {
+  margin-top: 8px !important;
+  color: #0066cc !important;
+  font-size: 12px !important;
+  font-weight: 700;
+}
+
+.leave-access-page-card .leave-page-back {
+  display: block;
+  margin-top: 18px;
+}
+
+.leave-request-filters {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 24px 0 14px;
+}
+
+.leave-request-filters label {
+  display: grid;
+  gap: 7px;
+  color: #71808f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.leave-request-filters input {
+  height: 36px;
+  padding: 0 9px;
+  border: 1px solid #d4dce2;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #172d43;
+  font: inherit;
+  font-size: 12px;
+}
+
+.leave-status-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.leave-status-tabs button {
+  padding: 9px 12px;
+  border: 1px solid #d4dce2;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #526273;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.leave-status-tabs button.active,
+.leave-status-tabs button:hover {
+  border-color: #0066cc;
+  background: #0066cc;
+  color: #ffffff;
+}
+
 .leave-section-heading {
   display: flex;
   align-items: center;

@@ -3,6 +3,7 @@ import { Route, Routes, useNavigate } from 'react-router-dom'
 import FlightAvailability from './FlightAvailability'
 import LeaveRequest from './LeaveRequest'
 import Dashboard from './Dashboard'
+import AdminLeaveRequests from './AdminLeaveRequests'
 import './App.css'
 
 function LoginPage() {
@@ -42,7 +43,9 @@ function LoginPage() {
   return (
     <div className="login-page">
       <marquee className="login-marquee" behavior="scroll" direction="left" scrollamount="8">
-        India's only A-Rated Flying Training Academy
+        <span className="marquee-saffron">India's only</span>{' '}
+        <span className="marquee-white">A-Rated</span>{' '}
+        <span className="marquee-green">Flying Training Academy</span>
       </marquee>
       <div className="login-hero">
         <div className="hero-overlay"></div>
@@ -447,6 +450,7 @@ function App() {
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/admin" element={<AdminPage />} />
+      <Route path="/admin/leave-requests" element={<AdminLeaveRequests />} />
       <Route path="/admin/signup" element={<AdminSignupPage />} />
       <Route path="/admin/forgot-password" element={<AdminForgotPasswordPage />} />
       <Route path="/flight-availability" element={<FlightAvailability />} />

@@ -973,7 +973,8 @@
 /* SUBMIT */
 
 .availability-submit {
-  width: 100%;
+  width: min(100%, 400px);
+  margin: 0 auto;
 
   height: 56px;
 
@@ -981,7 +982,8 @@
 
   align-items: center;
 
-  justify-content: space-between;
+  justify-content: center;
+  gap: 18px;
 
   padding: 0 19px;
 

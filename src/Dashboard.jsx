@@ -328,15 +328,9 @@ function Dashboard() {
           <button
             className="btn-leave-requests"
             type="button"
-            onClick={() => {
-              if (showLeaveRequests) {
-                setShowLeaveRequests(false)
-              } else {
-                setShowLeaveAccessPrompt(true)
-              }
-            }}
+            onClick={() => navigate('/admin/leave-requests')}
           >
-            {showLeaveRequests ? 'HIDE LEAVE REQUESTS' : 'LEAVE REQUESTS'}
+            LEAVE REQUESTS
           </button>
           <button 
             className="btn-clear-submissions"

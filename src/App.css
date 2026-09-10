@@ -1,9 +1,11 @@
 .login-page {
   position: relative;
+  height: 100vh;
   min-height: 100vh;
   width: 100%;
   display: flex;
   padding-top: 42px;
+  box-sizing: border-box;
   background:
     linear-gradient(120deg, rgba(10, 45, 58, 0.82), rgba(42, 73, 77, 0.7)),
     url('/background.png.png') center / cover no-repeat;
@@ -32,6 +34,18 @@
   overflow: hidden;
 }
 
+.marquee-saffron {
+  color: #ff9933;
+}
+
+.marquee-white {
+  color: #ffffff;
+}
+
+.marquee-green {
+  color: #138808;
+}
+
 /* =========================
    LEFT HERO - AVIATION THEMED
 ========================= */
@@ -39,7 +53,8 @@
 .login-hero {
   position: relative;
   width: 52%;
-  min-height: 100vh;
+  height: calc(100vh - 42px);
+  min-height: 0;
   overflow: hidden;
 
   background: rgba(23, 60, 72, 0.58);
@@ -67,7 +82,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 100vh;
+  min-height: calc(100vh - 42px);
 }
 
 .brand-mark {
@@ -181,7 +196,8 @@
 
 .login-panel {
   width: 48%;
-  min-height: 100vh;
+  height: calc(100vh - 42px);
+  min-height: 0;
 
   display: flex;
   align-items: center;
@@ -211,11 +227,11 @@
   z-index: 1;
   background: rgba(232, 243, 248, 0.96);
   padding: 50px 45px;
-  border-radius: 12px;
+  border-radius: 24px;
   box-shadow: 
     0 14px 34px rgba(7, 26, 48, 0.22),
     0 0 1px rgba(255, 255, 255, 0.35);
-  border: 1px solid rgba(190, 218, 230, 0.85);
+  border: 1px solid rgba(190, 218, 230, 0.55);
 }
 
 .login-box::before {
@@ -224,9 +240,9 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 4px;
+  height: 2px;
   background: linear-gradient(90deg, #c47b4e, #4b8b83, #c47b4e);
-  border-radius: 12px 12px 0 0;
+  border-radius: 24px 24px 0 0;
 }
 
 .mobile-logo {
@@ -700,11 +716,14 @@
 @media (max-width: 700px) {
   .login-page {
     display: block;
+    height: auto;
+    min-height: 100vh;
   }
 
   .login-hero {
     width: 100%;
     min-height: 300px;
+    height: auto;
   }
 
   .hero-content {
@@ -734,11 +753,28 @@
   .login-panel {
     width: 100%;
     min-height: auto;
-    padding: 45px 25px;
+    height: auto;
+    padding: 24px 18px;
+  }
+
+  .login-box {
+    padding: 30px 28px;
+  }
+
+  .welcome {
+    margin-bottom: 28px;
   }
 
   .welcome h2 {
-    font-size: 38px;
+    font-size: 34px;
+  }
+
+  .welcome p {
+    margin-top: 8px;
+  }
+
+  .form-group {
+    margin-bottom: 15px;
   }
 
   .mobile-logo {
