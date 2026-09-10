@@ -41,6 +41,9 @@ function LoginPage() {
 
   return (
     <div className="login-page">
+      <marquee className="login-marquee" behavior="scroll" direction="left" scrollamount="18">
+        India's only A-Rated Flying Training Academy
+      </marquee>
       <div className="login-hero">
         <div className="hero-overlay"></div>
 

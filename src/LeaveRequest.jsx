@@ -17,25 +17,21 @@ function LeaveRequest() {
   const [toDate, setToDate] = useState('')
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
-  const [requestStatus, setRequestStatus] = useState(null)
+  const [requests, setRequests] = useState([])
   const [isCreating, setIsCreating] = useState(false)
 
-  const findLatestRequest = () => {
+  const findStudentRequests = () => {
     const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]')
     return requests
       .filter((request) => request.studentId === studentId)
-      .sort((first, second) => new Date(second.requestedAt) - new Date(first.requestedAt))[0] || null
+      .sort((first, second) => new Date(second.requestedAt) - new Date(first.requestedAt))
   }
 
   useEffect(() => {
     const updateStatus = () => {
       if (isCreating) return
-      const request = findLatestRequest()
-      if (!request) return
-      setRequestStatus(request)
-      setFromDate(request.fromDate || '')
-      setToDate(request.toDate || '')
-      setReason(request.reason || '')
+      const studentRequests = findStudentRequests()
+      setRequests(studentRequests)
     }
 
     updateStatus()
@@ -76,21 +72,17 @@ function LeaveRequest() {
     }
     const previousRequests = JSON.parse(localStorage.getItem('leaveRequests') || '[]')
     localStorage.setItem('leaveRequests', JSON.stringify([...previousRequests, request]))
-    setRequestStatus(request)
+    setRequests(findStudentRequests())
     setIsCreating(false)
   }
 
   const startNewRequest = () => {
     setIsCreating(true)
-    setRequestStatus(null)
     setFromDate('')
     setToDate('')
     setReason('')
     setError('')
   }
-
-  const statusClass = requestStatus?.status.toLowerCase().replace(' ', '-') || 'pending-approval'
-  const reviewedBy = requestStatus?.reviewedBy || approverNames[requestStatus?.reviewedRole] || 'the admin'
 
   return (
     <main className="flight-page">
@@ -120,26 +112,34 @@ function LeaveRequest() {
             <p>Submit a leave request for admin review and track its approval status here.</p>
           </div>
 
-          {requestStatus && !isCreating && (
-            <div className={`leave-status-banner ${statusClass}`}>
-              <strong>LEAVE REQUEST: {requestStatus.status.toUpperCase()}</strong>
-              <span>
-                {requestStatus.status === 'Approved'
-                  ? `Approved by ${reviewedBy}.`
-                  : requestStatus.status === 'Rejected'
-                    ? `Rejected by ${reviewedBy}. Reason: ${requestStatus.rejectionReason || 'Please contact the academy.'}`
-                    : 'Your leave request is waiting for admin approval.'}
-              </span>
-            </div>
-          )}
+          {requests.length > 0 && !isCreating ? (
+            <div className="leave-request-history">
+              {requests.map((request, index) => {
+                const statusClass = request.status.toLowerCase().replace(' ', '-')
+                const reviewedBy = request.reviewedBy || approverNames[request.reviewedRole] || 'the admin'
 
-          {requestStatus && !isCreating ? (
-            <div className={`leave-request-pending ${statusClass}`}>
-              <span className="pending-icon">✓</span>
-              <span>
-                <strong>{requestStatus.status === 'Approved' ? 'Request approved' : requestStatus.status === 'Rejected' ? 'Request rejected' : 'Request raised'}</strong>
-                <small>{requestStatus.fromDate} to {requestStatus.toDate}</small>
-              </span>
+                return (
+                  <article className={`leave-request-record ${statusClass}`} key={`${request.requestedAt}-${index}`}>
+                    <div className="leave-status-banner">
+                      <strong>LEAVE REQUEST: {request.status.toUpperCase()}</strong>
+                      <span>
+                        {request.status === 'Approved'
+                          ? `Approved by ${reviewedBy}.`
+                          : request.status === 'Rejected'
+                            ? `Rejected by ${reviewedBy}. Reason: ${request.rejectionReason || 'Please contact the academy.'}`
+                            : 'Your leave request is waiting for admin approval.'}
+                      </span>
+                    </div>
+                    <div className={`leave-request-pending ${statusClass}`}>
+                      <span className="pending-icon">✓</span>
+                      <span>
+                        <strong>{request.status === 'Approved' ? 'Request approved' : request.status === 'Rejected' ? 'Request rejected' : 'Request raised'}</strong>
+                        <small>{request.fromDate} to {request.toDate}</small>
+                      </span>
+                    </div>
+                  </article>
+                )
+              })}
               <button type="button" className="new-leave-request-button" onClick={startNewRequest}>
                 RAISE ANOTHER REQUEST
               </button>

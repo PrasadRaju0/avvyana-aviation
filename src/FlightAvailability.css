@@ -188,6 +188,20 @@
   max-width: 720px;
 }
 
+.leave-request-history {
+  display: grid;
+  gap: 16px;
+}
+
+.leave-request-record {
+  display: grid;
+  gap: 8px;
+}
+
+.leave-request-history > .new-leave-request-button {
+  justify-self: start;
+}
+
 .leave-page-back {
   margin-bottom: 24px;
   padding: 8px 0;

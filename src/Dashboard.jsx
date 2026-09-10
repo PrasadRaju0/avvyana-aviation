@@ -156,12 +156,6 @@ function Dashboard() {
     return submission.studentName || account?.fullName || ''
   }
 
-  const getLeaveDays = (studentId) => submissions.filter(
-    (submission) =>
-      submission.studentId === studentId &&
-      ['not-available', 'seventh-day'].includes(submission.availability)
-  ).length
-
   const getSubmissionDateKey = (dateValue) => {
     if (!dateValue) return ''
 
@@ -219,13 +213,38 @@ function Dashboard() {
     return `${Math.floor(difference / (1000 * 60 * 60 * 24)) + 1} days`
   }
 
+  const getLeaveRequestDays = (studentId) => leaveRequests
+    .filter((request) => request.studentId === studentId)
+    .reduce((total, request) => {
+      const duration = getLeaveDuration(request.fromDate, request.toDate)
+      const days = Number.parseInt(duration, 10)
+      return total + (Number.isNaN(days) ? 0 : days)
+    }, 0)
+
+  const getTotalLeaveDays = (studentId) => {
+    const leaveRequestDays = getLeaveRequestDays(studentId)
+    const notAvailableFlyingDays = submissions.filter(
+      (submission) => submission.studentId === studentId && submission.availability === 'not-available'
+    ).length
+
+    return leaveRequestDays + notAvailableFlyingDays
+  }
+
   const searchedStudentSubmissions = searchSplNumber.trim()
     ? submissions.filter((submission) => {
       const searchValue = searchSplNumber.trim().toLowerCase()
-      return submission.studentId.toLowerCase() === searchValue ||
-        getStudentName(submission).toLowerCase() === searchValue
+      return submission.studentId.toLowerCase().includes(searchValue) ||
+        getStudentName(submission).toLowerCase().includes(searchValue)
     })
     : []
+
+  const filteredLeaveRequests = searchSplNumber.trim()
+    ? leaveRequests.filter((request) => {
+      const searchValue = searchSplNumber.trim().toLowerCase()
+      return request.studentId.toLowerCase().includes(searchValue) ||
+        (request.studentName || '').toLowerCase().includes(searchValue)
+    })
+    : leaveRequests
 
   // Calculate days in program from first submission
   const getDaysInProgram = (studentSubmissions) => {
@@ -248,9 +267,9 @@ function Dashboard() {
     return diffDays
   }
 
-  const searchedStudent = searchedStudentSubmissions[0]
+  const searchedStudent = searchedStudentSubmissions[0] || filteredLeaveRequests[0]
   const searchedLeaveDays = searchedStudent
-    ? getLeaveDays(searchedStudent.studentId)
+    ? getTotalLeaveDays(searchedStudent.studentId)
     : 0
   const searchedFlyingHours = searchedStudentSubmissions.reduce(
     (total, submission) => total + Number(submission.totalFlyingHours || 0),
@@ -426,7 +445,7 @@ function Dashboard() {
                       <div>
                         <h2>Leave Requests</h2>
                       </div>
-                      <strong>{leaveRequests.filter((request) => request.status === 'Pending approval').length} PENDING</strong>
+                      <strong>{filteredLeaveRequests.filter((request) => request.status === 'Pending approval').length} PENDING</strong>
                     </div>
 
                     <div className="submission-table-wrapper">
@@ -444,8 +463,8 @@ function Dashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {leaveRequests.length > 0 ? (
-                            leaveRequests.map((request, index) => (
+                          {filteredLeaveRequests.length > 0 ? (
+                            filteredLeaveRequests.map((request, index) => (
                               <tr key={`${request.studentId}-${request.requestedAt}-${index}`}>
                                 <td><strong>{request.studentName || request.studentId}</strong><br />{request.studentId}</td>
                                 <td>{formatSubmissionDate(request.fromDate)}</td>
@@ -589,11 +608,11 @@ function Dashboard() {
                 <th>Name</th>
                 <th>Type of exercise</th>
                 <th>Total hours</th>
-                <th>Leave days</th>
                 <th>7th Day</th>
                 <th>Not Available</th>
                 <th>Reason</th>
                 <th>Action</th>
+                        <th>Total leaves</th>
               </tr>
             </thead>
             <tbody>
@@ -604,7 +623,6 @@ function Dashboard() {
                     <td><strong>{getStudentDetails(submission)}</strong></td>
                     <td>{submission.exercise}</td>
                     <td>{submission.totalFlyingHours} hrs</td>
-                    <td>{getLeaveDays(submission.studentId)}</td>
                     <td>
                       {submission.availability === 'seventh-day' ? (
                         <span className="availability-status seventh-day">Yes</span>
@@ -625,11 +643,12 @@ function Dashboard() {
                         Delete
                       </button>
                     </td>
+                    <td><strong>{getTotalLeaveDays(submission.studentId)}</strong></td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="9" className="empty-submissions">
+                    <td colSpan="9" className="empty-submissions">
                     {searchSplNumber.trim() || selectedDate
                       ? 'No leave record found for these filters.'
                       : 'No leave records yet.'}
