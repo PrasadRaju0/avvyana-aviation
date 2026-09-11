@@ -190,12 +190,16 @@
 
 .leave-request-history {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
 .leave-request-record {
   display: grid;
   gap: 8px;
+  padding: 4px;
+  border: 1px solid #e1e8ed;
+  border-radius: 12px;
+  background: #fbfcfd;
 }
 
 .leave-request-history > .new-leave-request-button {
@@ -280,13 +284,13 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  margin-top: 16px;
-  padding: 12px 14px;
+  margin-top: 0;
+  padding: 14px 16px;
   border: 1px solid #d6e0e7;
   border-radius: 7px;
   background: #f4f8fa;
   color: #526273;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -636,13 +640,30 @@
 }
 
 .leave-request-box {
-  padding: 19px;
+  padding: 24px;
 
   border: 1px solid #dfe5e9;
 
   border-radius: 9px;
 
-  background: #f8fafb;
+  background: linear-gradient(145deg, #f8fafb, #f1f6f8);
+}
+
+.leave-form-intro {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 20px;
+}
+
+.leave-form-intro strong {
+  color: #172d43;
+  font-size: 17px;
+}
+
+.leave-form-intro span {
+  color: #71808d;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .leave-date-grid {
@@ -778,6 +799,16 @@
   color: #26724e;
 }
 
+.leave-request-details {
+  display: grid;
+  gap: 4px;
+}
+
+.leave-request-details strong {
+  color: inherit;
+  font-size: 13px;
+}
+
 .pending-icon {
   width: 37px;
 
@@ -801,14 +832,15 @@
 }
 
 .new-leave-request-button {
-  margin-left: auto;
-  padding: 9px 11px;
+  justify-self: start;
+  margin-top: 4px;
+  padding: 11px 14px;
   border: 1px solid #26724e;
   border-radius: 5px;
   background: white;
   color: #26724e;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.8px;
   white-space: nowrap;

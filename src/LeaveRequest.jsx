@@ -8,6 +8,18 @@ const approverNames = {
   DCFI: 'Captain SM',
 }
 
+function getLeaveDuration(fromDate, toDate) {
+  if (!fromDate || !toDate) return '-'
+
+  const start = new Date(`${fromDate}T00:00:00`)
+  const end = new Date(`${toDate}T00:00:00`)
+  const difference = end - start
+
+  if (Number.isNaN(difference) || difference < 0) return '-'
+
+  return `${Math.floor(difference / (1000 * 60 * 60 * 24)) + 1} days`
+}
+
 function LeaveRequest() {
   const navigate = useNavigate()
   const studentId = localStorage.getItem('studentId') || 'AVV-0001'
@@ -121,7 +133,7 @@ function LeaveRequest() {
                 return (
                   <article className={`leave-request-record ${statusClass}`} key={`${request.requestedAt}-${index}`}>
                     <div className="leave-status-banner">
-                      <strong>LEAVE REQUEST: {request.status.toUpperCase()}</strong>
+                      <strong>{request.status === 'Approved' ? '✓ APPROVED' : request.status === 'Rejected' ? '× REJECTED' : '◷ PENDING REVIEW'}</strong>
                       <span>
                         {request.status === 'Approved'
                           ? `Approved by ${reviewedBy}.`
@@ -131,10 +143,10 @@ function LeaveRequest() {
                       </span>
                     </div>
                     <div className={`leave-request-pending ${statusClass}`}>
-                      <span className="pending-icon">✓</span>
-                      <span>
+                      <span className="pending-icon">{request.status === 'Approved' ? '✓' : request.status === 'Rejected' ? '!' : '◷'}</span>
+                      <span className="leave-request-details">
                         <strong>{request.status === 'Approved' ? 'Request approved' : request.status === 'Rejected' ? 'Request rejected' : 'Request raised'}</strong>
-                        <small>{request.fromDate} to {request.toDate}</small>
+                        <small>{request.fromDate} to {request.toDate} · {getLeaveDuration(request.fromDate, request.toDate)}</small>
                       </span>
                     </div>
                   </article>
@@ -146,19 +158,24 @@ function LeaveRequest() {
             </div>
           ) : (
             <form className="leave-request-box" onSubmit={handleSubmit}>
+              <div className="leave-form-intro">
+                <strong>Plan your time away</strong>
+                <span>Choose your dates and tell the academy why you need leave.</span>
+              </div>
+
               <div className="leave-date-grid">
                 <label>
-                  FROM DATE
+                  START DATE
                   <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} required />
                 </label>
                 <label>
-                  TO DATE
+                  RETURN DATE
                   <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} required />
                 </label>
               </div>
 
               <label className="leave-reason-field">
-                REASON <span>*</span>
+                REASON FOR LEAVE <span>*</span>
                 <textarea
                   placeholder="Enter the reason for your leave request"
                   value={reason}

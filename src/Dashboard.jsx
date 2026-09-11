@@ -452,7 +452,7 @@ function Dashboard() {
                             <th>Total leave days</th>
                             <th>Reason</th>
                             <th>Status</th>
-                            <th>Admin response</th>
+                            <th>Rejection reason</th>
                             <th>Action</th>
                           </tr>
                         </thead>

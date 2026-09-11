@@ -613,7 +613,7 @@ function FlightAvailability() {
                   <span className="option-icon">7</span>
 
                   <span className="option-content">
-                    <strong>7th Day</strong>
+                    <strong>😴 7th Day</strong>
                     <small>Due to 7th day, I am not available.</small>
                   </span>
 

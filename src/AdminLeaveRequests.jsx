@@ -44,7 +44,6 @@ function AdminLeaveRequests() {
     ? 'DCFI'
     : storedAdminRole
   ).toUpperCase()
-  const approverName = approverNames[adminRole] || localStorage.getItem('adminName') || adminRole
 
   const handleAccess = (event) => {
     event.preventDefault()
@@ -57,11 +56,38 @@ function AdminLeaveRequests() {
     setAccessGranted(true)
   }
 
-  const handleDecision = (requestIndex, status) => {
+  const askApproverIdentity = () => {
+    const selectedApprover = window.prompt(
+      'Who is taking this action? Enter 1 for Captain Shariq Ali (CFI) or 2 for Captain SM (DCFI).'
+    )
+
+    if (selectedApprover === '1') {
+      return { name: 'Captain Shariq Ali', role: 'CFI' }
+    }
+
+    if (selectedApprover === '2') {
+      return { name: 'Captain SM', role: 'DCFI' }
+    }
+
+    window.alert('Please select 1 for Captain Shariq Ali (CFI) or 2 for Captain SM (DCFI).')
+    return null
+  }
+
+  const handleDecision = (requestIndex, status, decisionApprover) => {
+    const request = leaveRequests[requestIndex]
+    const studentName = request?.studentName || request?.studentId || 'this student'
+
+    if (!window.confirm(`Are you sure you want to ${status.toLowerCase()} ${studentName}'s leave request?`)) {
+      return
+    }
+
     let rejectionReason = ''
     if (status === 'Rejected') {
       rejectionReason = window.prompt('Enter the rejection reason:')?.trim() || ''
-      if (!rejectionReason) return
+      if (!rejectionReason) {
+        window.alert('A rejection reason is required.')
+        return
+      }
     }
 
     const updatedRequests = leaveRequests.map((request, index) => index === requestIndex
@@ -69,8 +95,8 @@ function AdminLeaveRequests() {
         ...request,
         status,
         rejectionReason,
-        reviewedBy: approverName,
-        reviewedRole: adminRole,
+        reviewedBy: decisionApprover.name,
+        reviewedRole: decisionApprover.role,
         reviewedAt: new Date().toISOString(),
       }
       : request
@@ -179,7 +205,7 @@ function AdminLeaveRequests() {
                 <th>Total leave days</th>
                 <th>Reason</th>
                 <th>Status</th>
-                <th>Admin response</th>
+                <th>Rejection reason</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -198,12 +224,30 @@ function AdminLeaveRequests() {
                         {request.status}
                       </span>
                     </td>
-                    <td>{request.rejectionReason || (request.reviewedBy ? `${request.status} by ${request.reviewedBy}` : '-')}</td>
+                    <td>{request.rejectionReason || '-'}</td>
                     <td>
                       {request.status === 'Pending approval' ? (
                         <div className="leave-decision-actions">
-                          <button type="button" className="btn-approve" onClick={() => handleDecision(originalIndex, 'Approved')}>APPROVE</button>
-                          <button type="button" className="btn-reject" onClick={() => handleDecision(originalIndex, 'Rejected')}>REJECT</button>
+                          <button
+                            type="button"
+                            className="btn-approve"
+                            onClick={() => {
+                              const decisionApprover = askApproverIdentity()
+                              if (decisionApprover) handleDecision(originalIndex, 'Approved', decisionApprover)
+                            }}
+                          >
+                            APPROVE
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-reject"
+                            onClick={() => {
+                              const decisionApprover = askApproverIdentity()
+                              if (decisionApprover) handleDecision(originalIndex, 'Rejected', decisionApprover)
+                            }}
+                          >
+                            REJECT
+                          </button>
                         </div>
                       ) : <span className="reviewed-by">{request.status} by {request.reviewedBy || approverNames[request.reviewedRole] || '-'}</span>}
                     </td>
