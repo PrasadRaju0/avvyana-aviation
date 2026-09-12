@@ -43,9 +43,11 @@ function LoginPage() {
   return (
     <div className="login-page">
       <marquee className="login-marquee" behavior="scroll" direction="left" scrollamount="8">
+        <span className="marquee-aircraft" aria-hidden="true">✈</span>{' '}
         <span className="marquee-saffron">India's only</span>{' '}
         <span className="marquee-white">A-Rated</span>{' '}
-        <span className="marquee-green">Flying Training Academy</span>
+        <span className="marquee-green">Flying Training Academy</span>{' '}
+        <span className="marquee-aircraft" aria-hidden="true">✈</span>
       </marquee>
       <div className="login-hero">
         <div className="hero-overlay"></div>
@@ -310,6 +312,42 @@ function StudentAccountForm({ title, submitLabel, form, setForm, error, onSubmit
   )
 }
 
+function AdminPortalHome() {
+  const navigate = useNavigate()
+
+  const handleLogout = () => {
+    localStorage.removeItem('adminLoggedIn')
+    localStorage.removeItem('adminRole')
+    localStorage.removeItem('adminName')
+    navigate('/')
+  }
+
+  return (
+    <main className="admin-page">
+      <div className="admin-card admin-portal-home">
+        <div className="brand-mark">AVVYANA</div>
+        <div className="brand-subtitle">AVIATION ACADEMY</div>
+        <span className="admin-label">ADMIN PORTAL</span>
+        <h1>Choose a workspace</h1>
+        <p>Select the area you want to manage.</p>
+
+        <div className="admin-portal-options">
+          <button type="button" className="admin-portal-option" onClick={() => navigate('/admin/cadets-availability')}>
+            <span className="admin-portal-option-heading"><span className="admin-portal-icon" aria-hidden="true">✈</span><strong>Cadets Availability</strong></span>
+            <span>Review flight status, submissions, and student details.</span>
+          </button>
+          <button type="button" className="admin-portal-option" onClick={() => navigate('/admin/leave-requests')}>
+            <span className="admin-portal-option-heading"><span className="admin-portal-icon" aria-hidden="true">▣</span><strong>Leave Approvals</strong></span>
+            <span className="admin-portal-note">Note: Leaves can be approved by CFI/DCFI only.</span>
+          </button>
+        </div>
+
+        <button type="button" className="admin-return-button" onClick={handleLogout}>LOG OUT</button>
+      </div>
+    </main>
+  )
+}
+
 function AdminPage() {
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
@@ -347,7 +385,7 @@ function AdminPage() {
   }
 
   if (isAuthenticated) {
-    return <Dashboard />
+    return <AdminPortalHome />
   }
 
   return (
@@ -450,6 +488,7 @@ function App() {
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/admin" element={<AdminPage />} />
+      <Route path="/admin/cadets-availability" element={<Dashboard />} />
       <Route path="/admin/leave-requests" element={<AdminLeaveRequests />} />
       <Route path="/admin/signup" element={<AdminSignupPage />} />
       <Route path="/admin/forgot-password" element={<AdminForgotPasswordPage />} />

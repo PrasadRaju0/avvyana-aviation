@@ -46,6 +46,14 @@
   color: #138808;
 }
 
+.marquee-aircraft {
+  display: inline-block;
+  color: #ff9933;
+  font-size: 17px;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
 /* =========================
    LEFT HERO - AVIATION THEMED
 ========================= */
@@ -504,6 +512,70 @@
   margin: 14px 0 28px;
   color: #718096;
   line-height: 1.6;
+}
+
+.admin-portal-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 30px;
+  text-align: left;
+}
+
+.admin-portal-option {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 18px;
+  border: 1px solid #d9e5ef;
+  border-radius: 8px;
+  background: #f8fbfd;
+  color: #001a33;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.admin-portal-option-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #001a33;
+}
+
+.admin-portal-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #e4f1fb;
+  color: #0066cc;
+  font-size: 16px;
+}
+
+.admin-portal-option:hover {
+  border-color: #0066cc;
+  background: #f0f7fc;
+  transform: translateY(-2px);
+}
+
+.admin-portal-option strong {
+  font-size: 15px;
+}
+
+.admin-portal-option span {
+  color: #718096;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.admin-portal-option .admin-portal-note {
+  color: #0066cc;
+  font-family: "Trebuchet MS", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
 .admin-form-group {

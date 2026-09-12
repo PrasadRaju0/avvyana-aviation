@@ -325,13 +325,6 @@ function Dashboard() {
         </div>
 
         <div className="dashboard-actions-bar">
-          <button
-            className="btn-leave-requests"
-            type="button"
-            onClick={() => navigate('/admin/leave-requests')}
-          >
-            LEAVE REQUESTS
-          </button>
           <button 
             className="btn-clear-submissions"
             onClick={handleClearSubmissions}
