@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
 
 import './FlightAvailability.css'
 
@@ -205,7 +206,7 @@ function FlightAvailability() {
     }
   }, [studentId, isCreatingLeaveRequest])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
 
     setError('')
@@ -302,14 +303,30 @@ function FlightAvailability() {
         new Date().toISOString(),
     }
 
-    const previousSubmissions = JSON.parse(
-      localStorage.getItem('flightSubmissions') || '[]'
-    )
+    try {
+      const { data: savedSubmission, error: submissionError } = await supabase
+        .from('flight_submissions')
+        .insert({
+          student_id: submission.studentId,
+          student_name: submission.studentName,
+          flight_date: submission.flightDate,
+          availability: submission.availability,
+          aircraft_type: submission.aircraftType,
+          exercise: submission.exercise,
+          unavailability_reason: submission.unavailabilityReason,
+          total_flying_hours: submission.totalFlyingHours,
+          submitted_at: submission.submittedAt,
+        })
+        .select('id')
+        .single()
 
-    localStorage.setItem(
-      'flightSubmissions',
-      JSON.stringify([...previousSubmissions, submission])
-    )
+      if (submissionError || !savedSubmission) {
+        throw submissionError || new Error('Supabase did not return the saved submission.')
+      }
+    } catch (submissionError) {
+      setError(`Unable to save flight availability: ${submissionError.message}`)
+      return
+    }
 
     localStorage.setItem(
       'flightSubmission',

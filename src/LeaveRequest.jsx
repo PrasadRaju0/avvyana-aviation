@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
 
 import './FlightAvailability.css'
 
@@ -101,13 +102,14 @@ function LeaveRequest() {
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
   const [requests, setRequests] = useState([])
+  const [databaseRequests, setDatabaseRequests] = useState(null)
   const [isCreating, setIsCreating] = useState(false)
   const [requestView, setRequestView] = useState('all')
 
   const shouldShowForm = requests.length === 0 || isCreating
   const latestRequest = requests[0] || null
 
-  const findStudentRequests = () => {
+  const findLocalStudentRequests = () => {
     const requests = getStoredLeaveRequests()
     return requests
       .filter((request) => request.studentId === studentId)
@@ -115,10 +117,42 @@ function LeaveRequest() {
   }
 
   useEffect(() => {
-    const updateStatus = () => {
+    let isMounted = true
+
+    const updateStatus = async () => {
       if (isCreating) return
-      const studentRequests = findStudentRequests()
-      setRequests(studentRequests)
+
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+
+      if (!isMounted) return
+
+      if (!error) {
+        const mappedRequests = data.map((item) => ({
+          id: item.id,
+          studentId: item.student_id,
+          studentName: item.student_name,
+          fromDate: item.from_date,
+          toDate: item.to_date,
+          reason: item.reason,
+          status: item.status,
+          rejectionReason: item.rejection_reason,
+          reviewedBy: item.reviewed_by,
+          reviewedRole: item.reviewed_role,
+          reviewedAt: item.reviewed_at,
+          requestedAt: item.created_at,
+          trackingId: `AVV-${item.id}`,
+        }))
+        setDatabaseRequests(mappedRequests)
+        setRequests(mappedRequests)
+        return
+      }
+
+      const localRequests = findLocalStudentRequests()
+      setRequests(localRequests)
     }
 
     updateStatus()
@@ -127,13 +161,14 @@ function LeaveRequest() {
     const refresh = window.setInterval(updateStatus, 1000)
 
     return () => {
+      isMounted = false
       window.removeEventListener('storage', updateStatus)
       window.removeEventListener('focus', updateStatus)
       window.clearInterval(refresh)
     }
   }, [studentId, isCreating])
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
 
@@ -158,9 +193,24 @@ function LeaveRequest() {
       requestedAt: new Date().toISOString(),
       trackingId: generateTrackingId(),
     }
-    const previousRequests = getStoredLeaveRequests()
-    localStorage.setItem('leaveRequests', JSON.stringify([...previousRequests, request]))
-    setRequests(findStudentRequests())
+    const { error: requestError } = await supabase
+      .from('leave_requests')
+      .insert({
+        student_id: request.studentId,
+        student_name: request.studentName,
+        from_date: request.fromDate,
+        to_date: request.toDate,
+        reason: request.reason,
+        status: request.status,
+      })
+
+    if (requestError) {
+      setError(`Unable to save leave request: ${requestError.message}`)
+      return
+    }
+
+    setDatabaseRequests(null)
+    setRequests([request, ...(databaseRequests || requests)])
     setIsCreating(false)
   }
 

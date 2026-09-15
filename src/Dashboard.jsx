@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
 import './Dashboard.css'
 
 const approverNames = {
@@ -38,6 +39,8 @@ function Dashboard() {
   const [searchSplNumber, setSearchSplNumber] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedExercise, setSelectedExercise] = useState('')
+  const [databaseSubmissions, setDatabaseSubmissions] = useState(null)
+  const [databaseError, setDatabaseError] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [showLeaveRequests, setShowLeaveRequests] = useState(false)
@@ -70,9 +73,47 @@ function Dashboard() {
       ? [legacySubmission]
       : []
 
+  useEffect(() => {
+    let isMounted = true
+
+    const loadSubmissions = async () => {
+      const { data, error } = await supabase
+        .from('flight_submissions')
+        .select('*')
+        .order('submitted_at', { ascending: false })
+
+      if (!isMounted) return
+
+      if (error) {
+        setDatabaseError(`Unable to load flight submissions: ${error.message}`)
+        return
+      }
+
+      setDatabaseError('')
+
+      setDatabaseSubmissions(data.map((item) => ({
+        id: item.id,
+        studentId: item.student_id,
+        studentName: item.student_name,
+        flightDate: item.flight_date,
+        availability: item.availability,
+        aircraftType: item.aircraft_type,
+        exercise: item.exercise,
+        unavailabilityReason: item.unavailability_reason,
+        totalFlyingHours: item.total_flying_hours,
+        submittedAt: item.submitted_at,
+      })))
+    }
+
+    loadSubmissions()
+    return () => { isMounted = false }
+  }, [])
+
+  const displayedSubmissions = databaseSubmissions ?? submissions
+
   const exerciseOptions = Array.from(new Set([
     ...allExercises,
-    ...submissions.flatMap((submission) =>
+    ...displayedSubmissions.flatMap((submission) =>
       (submission.exercise || '')
         .split(',')
         .map((item) => item.trim())
@@ -210,12 +251,12 @@ function Dashboard() {
   }
 
   const filteredSubmissions = (searchSplNumber.trim()
-    ? submissions.filter((submission) => {
+    ? displayedSubmissions.filter((submission) => {
       const searchValue = searchSplNumber.trim().toLowerCase()
       return submission.studentId.toLowerCase().includes(searchValue) ||
         getStudentName(submission).toLowerCase().includes(searchValue)
     })
-    : submissions
+    : displayedSubmissions
   ).filter((submission) => {
     const matchesDate = !selectedDate || getSubmissionDateKey(
       submission.flightDate || submission.submittedAt
@@ -284,7 +325,7 @@ function Dashboard() {
 
   const getTotalLeaveDays = (studentId) => {
     const leaveRequestDays = getLeaveRequestDays(studentId)
-    const notAvailableFlyingDays = submissions.filter(
+    const notAvailableFlyingDays = displayedSubmissions.filter(
       (submission) => submission.studentId === studentId && submission.availability === 'not-available'
     ).length
 
@@ -292,7 +333,7 @@ function Dashboard() {
   }
 
   const searchedStudentSubmissions = searchSplNumber.trim()
-    ? submissions.filter((submission) => {
+    ? displayedSubmissions.filter((submission) => {
       const searchValue = searchSplNumber.trim().toLowerCase()
       return submission.studentId.toLowerCase().includes(searchValue) ||
         getStudentName(submission).toLowerCase().includes(searchValue)
@@ -383,6 +424,12 @@ function Dashboard() {
       {successMessage && (
         <div className="success-banner">
           {successMessage}
+        </div>
+      )}
+
+      {databaseError && (
+        <div className="error-banner">
+          {databaseError}
         </div>
       )}
 

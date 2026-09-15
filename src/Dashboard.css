@@ -20,6 +20,7 @@
   letter-spacing: 2px;
 }
 
+
 .dashboard-brand-button {
   display: block;
   padding: 0;
@@ -824,6 +825,17 @@
   font-weight: 600;
   font-size: 14px;
   animation: slideIn 0.3s ease;
+}
+
+.error-banner {
+  padding: 14px 20px;
+  margin: 16px 0;
+  background: #fef2f2;
+  border-left: 4px solid #dc2626;
+  border-radius: 6px;
+  color: #991b1b;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 @keyframes slideIn {

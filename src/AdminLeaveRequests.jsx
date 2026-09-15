@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
 import './Dashboard.css'
 
 const approverNames = {
@@ -56,6 +57,37 @@ function AdminLeaveRequests() {
     localStorage.getItem('leaveRequests') || '[]'
   ))
 
+  useEffect(() => {
+    let isMounted = true
+
+    const loadLeaveRequests = async () => {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (!isMounted || error) return
+
+      setLeaveRequests(data.map((item) => ({
+        id: item.id,
+        studentId: item.student_id,
+        studentName: item.student_name,
+        fromDate: item.from_date,
+        toDate: item.to_date,
+        reason: item.reason,
+        status: item.status,
+        rejectionReason: item.rejection_reason,
+        reviewedBy: item.reviewed_by,
+        reviewedRole: item.reviewed_role,
+        reviewedAt: item.reviewed_at,
+        requestedAt: item.created_at,
+      })))
+    }
+
+    loadLeaveRequests()
+    return () => { isMounted = false }
+  }, [])
+
   const storedAdminName = localStorage.getItem('adminName') || ''
   const storedAdminRole = localStorage.getItem('adminRole') || 'CFI'
   const adminRole = (/dcfi|captain sm/i.test(storedAdminName)
@@ -91,7 +123,7 @@ function AdminLeaveRequests() {
     return null
   }
 
-  const handleDecision = (requestIndex, status, decisionApprover) => {
+  const handleDecision = async (requestIndex, status, decisionApprover) => {
     const request = leaveRequests[requestIndex]
     const studentName = request?.studentName || request?.studentId || 'this student'
 
@@ -120,7 +152,26 @@ function AdminLeaveRequests() {
       : request
     )
 
-    localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    if (request.id) {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          status,
+          rejection_reason: rejectionReason,
+          reviewed_by: decisionApprover.name,
+          reviewed_role: decisionApprover.role,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq('id', request.id)
+
+      if (error) {
+        setSuccessMessage(`Unable to update leave request: ${error.message}`)
+        return
+      }
+    } else {
+      localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    }
+
     setLeaveRequests(updatedRequests)
     setSuccessMessage(`Leave request ${status.toLowerCase()}.`)
     window.setTimeout(() => setSuccessMessage(''), 3000)
@@ -186,7 +237,7 @@ function AdminLeaveRequests() {
     )
   }
 
-  const handleBulkDecision = (status) => {
+  const handleBulkDecision = async (status) => {
     const selectedRequests = leaveRequests.filter((request) =>
       selectedRequestKeys.includes(getRequestKey(request)) && request.status === 'Pending approval'
     )
@@ -221,7 +272,30 @@ function AdminLeaveRequests() {
       : request
     )
 
-    localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    const databaseRequests = selectedRequests.filter((request) => request.id)
+    const databaseUpdates = await Promise.all(databaseRequests.map((request) => supabase
+      .from('leave_requests')
+      .update({
+        status,
+        rejection_reason: rejectionReason,
+        reviewed_by: decisionApprover.name,
+        reviewed_role: decisionApprover.role,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', request.id)
+    ))
+
+    const failedUpdate = databaseUpdates.find(({ error }) => error)
+    if (failedUpdate) {
+      setSuccessMessage(`Unable to update leave requests: ${failedUpdate.error.message}`)
+      return
+    }
+
+    const localRequests = selectedRequests.filter((request) => !request.id)
+    if (localRequests.length > 0) {
+      localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    }
+
     setLeaveRequests(updatedRequests)
     setSelectedRequestKeys([])
     setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} ${status.toLowerCase()}.`)

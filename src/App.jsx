@@ -4,6 +4,7 @@ import FlightAvailability from './FlightAvailability'
 import LeaveRequest from './LeaveRequest'
 import Dashboard from './Dashboard'
 import AdminLeaveRequests from './AdminLeaveRequests'
+import { supabase } from './lib/supabase'
 import './App.css'
 
 function LoginPage() {
@@ -17,18 +18,34 @@ function LoginPage() {
   })
   const [error, setError] = useState('')
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
 
-    const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
-    const account = accounts.find(
-      (item) => item.splNumber === studentId.trim() && item.password === password
-    )
+    const normalizedSpl = studentId.trim()
+    const { data: databaseAccount, error: databaseError } = await supabase
+      .from('student_accounts')
+      .select('spl_number, full_name, batch_number, password')
+      .eq('spl_number', normalizedSpl)
+      .eq('password', password)
+      .maybeSingle()
 
-    if ((studentId === 'AVV-0001' && password === '123456') || account) {
+    const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
+    const localAccount = accounts.find(
+      (item) => item.splNumber === normalizedSpl && item.password === password
+    )
+    const account = databaseAccount
+      ? {
+        name: databaseAccount.full_name,
+        batchNumber: databaseAccount.batch_number,
+      }
+      : databaseError
+        ? localAccount
+        : null
+
+    if ((normalizedSpl === 'AVV-0001' && password === '123456') || account) {
       localStorage.setItem('studentLoggedIn', 'true')
-      localStorage.setItem('studentId', studentId)
+      localStorage.setItem('studentId', normalizedSpl)
       localStorage.setItem('studentName', account?.name || 'Demo Student')
       localStorage.setItem('studentBatchNumber', account?.batchNumber || '')
       localStorage.setItem('selectedFlightDate', flightDate)
@@ -167,16 +184,48 @@ function SignupPage() {
   const [error, setError] = useState('')
   const [isSubmitted, setIsSubmitted] = useState(false)
 
-  const handleSignup = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault()
-    const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
     const normalizedSpl = form.splNumber.trim()
-    if (accounts.some((item) => item.splNumber === normalizedSpl)) {
+
+    const { data: existingAccount, error: lookupError } = await supabase
+      .from('student_accounts')
+      .select('id')
+      .eq('spl_number', normalizedSpl)
+      .maybeSingle()
+
+    const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
+    if (existingAccount || (lookupError && accounts.some((item) => item.splNumber === normalizedSpl))) {
       setError('An account with this SPL Number already exists.')
       return
     }
-    accounts.push({ ...form, name: form.name.trim(), splNumber: normalizedSpl, batchNumber: form.batchNumber.trim(), mobileNumber: form.mobileNumber.trim(), email: form.email.trim().toLowerCase() })
-    localStorage.setItem('studentAccounts', JSON.stringify(accounts))
+
+    const account = {
+      name: form.name.trim(),
+      splNumber: normalizedSpl,
+      batchNumber: form.batchNumber.trim(),
+      mobileNumber: form.mobileNumber.trim(),
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+    }
+    const { error: signupError } = await supabase
+      .from('student_accounts')
+      .insert({
+        spl_number: account.splNumber,
+        full_name: account.name,
+        email: account.email,
+        password: account.password,
+        batch_number: account.batchNumber,
+      })
+
+    if (signupError) {
+      if (!lookupError) {
+        setError(`Unable to create account: ${signupError.message}`)
+        return
+      }
+      accounts.push(account)
+      localStorage.setItem('studentAccounts', JSON.stringify(accounts))
+    }
     setIsSubmitted(true)
     
     // Auto-redirect after 5 seconds
@@ -233,9 +282,20 @@ function ForgotPasswordPage() {
 
   const handleReset = async (e) => {
     e.preventDefault()
+    const normalizedSpl = form.splNumber.trim()
+    const normalizedEmail = form.email.trim().toLowerCase()
+    const { data: databaseAccount, error: databaseError } = await supabase
+      .from('student_accounts')
+      .select('id, spl_number, email')
+      .eq('spl_number', normalizedSpl)
+      .eq('email', normalizedEmail)
+      .maybeSingle()
+
     const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
-    const index = accounts.findIndex((item) => item.splNumber === form.splNumber.trim() && item.email?.toLowerCase() === form.email.trim().toLowerCase())
-    if (index === -1) return setError('No student account matches that SPL Number and email.')
+    const localIndex = accounts.findIndex((item) => item.splNumber === normalizedSpl && item.email?.toLowerCase() === normalizedEmail)
+    if (!databaseAccount && (!databaseError || localIndex === -1)) {
+      return setError('No student account matches that SPL Number and email.')
+    }
 
     try {
       if (!otpSent) {
@@ -263,8 +323,17 @@ function ForgotPasswordPage() {
     }
     if (form.password.length < 6) return setError('Password must be at least 6 characters.')
     if (form.password !== form.confirmPassword) return setError('Passwords do not match.')
-    accounts[index].password = form.password
-    localStorage.setItem('studentAccounts', JSON.stringify(accounts))
+    if (databaseAccount) {
+      const { error: updateError } = await supabase
+        .from('student_accounts')
+        .update({ password: form.password })
+        .eq('id', databaseAccount.id)
+
+      if (updateError) return setError(`Unable to update password: ${updateError.message}`)
+    } else {
+      accounts[localIndex].password = form.password
+      localStorage.setItem('studentAccounts', JSON.stringify(accounts))
+    }
     navigate('/', { state: { message: 'Password updated. Sign in with your new password.' } })
   }
 
