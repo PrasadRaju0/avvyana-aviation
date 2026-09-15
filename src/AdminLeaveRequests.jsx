@@ -26,6 +26,22 @@ function formatDate(dateValue) {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString()
 }
 
+function getTodayDate() {
+  const today = new Date()
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+}
+
+function getReturnStatus(request) {
+  if (request.status !== 'Approved') return { label: '-', className: '' }
+  if (request.closureClosedAt) return { label: 'Closed', className: 'available' }
+  if (request.returnReportedAt) return { label: 'Returned', className: 'available' }
+
+  const today = getTodayDate()
+  if (today > request.toDate) return { label: 'Overdue', className: 'not-available' }
+  if (today === request.toDate) return { label: 'Due today', className: 'pending' }
+  return { label: `Due ${formatDate(request.toDate)}`, className: 'pending' }
+}
+
 function AdminLeaveRequests() {
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
@@ -33,6 +49,8 @@ function AdminLeaveRequests() {
   const [accessError, setAccessError] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
+  const [selectedRequestKeys, setSelectedRequestKeys] = useState([])
+  const [activeView, setActiveView] = useState(null)
   const [successMessage, setSuccessMessage] = useState('')
   const [leaveRequests, setLeaveRequests] = useState(() => JSON.parse(
     localStorage.getItem('leaveRequests') || '[]'
@@ -108,6 +126,35 @@ function AdminLeaveRequests() {
     window.setTimeout(() => setSuccessMessage(''), 3000)
   }
 
+  const closeLeave = (request) => {
+    if (!request.returnReportedAt) return
+
+    const actualReturnDate = window.prompt(
+      'Enter the actual return date (YYYY-MM-DD):',
+      getTodayDate()
+    )?.trim()
+    if (!actualReturnDate) return
+
+    const today = getTodayDate()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(actualReturnDate) || actualReturnDate < request.fromDate || actualReturnDate > today) {
+      window.alert('Enter a valid return date between the leave start date and today.')
+      return
+    }
+
+    if (!window.confirm(`Close ${request.studentName || request.studentId}'s leave record for ${formatDate(actualReturnDate)}?`)) return
+
+    const updatedRequests = leaveRequests.map((item) => item.requestedAt === request.requestedAt
+      ? { ...item, actualReturnDate, closureClosedAt: new Date().toISOString() }
+      : item
+    )
+    localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    setLeaveRequests(updatedRequests)
+    setSuccessMessage('Leave record closed.')
+    window.setTimeout(() => setSuccessMessage(''), 3000)
+  }
+
+  const getRequestKey = (request) => request.requestedAt || `${request.studentId}-${request.fromDate}-${request.toDate}`
+
   const filteredRequests = leaveRequests.filter((request) => {
     const matchesStatus = statusFilter === 'All' || request.status === statusFilter
     const matchesDate = !selectedDate || (
@@ -116,6 +163,73 @@ function AdminLeaveRequests() {
     return matchesStatus && matchesDate
   })
 
+  const pendingFilteredRequests = filteredRequests.filter(
+    (request) => request.status === 'Pending approval'
+  )
+  const allPendingSelected = pendingFilteredRequests.length > 0 && pendingFilteredRequests.every(
+    (request) => selectedRequestKeys.includes(getRequestKey(request))
+  )
+
+  const toggleRequestSelection = (request) => {
+    const requestKey = getRequestKey(request)
+    setSelectedRequestKeys((currentKeys) => currentKeys.includes(requestKey)
+      ? currentKeys.filter((key) => key !== requestKey)
+      : [...currentKeys, requestKey]
+    )
+  }
+
+  const toggleSelectAllPending = () => {
+    const pendingKeys = pendingFilteredRequests.map(getRequestKey)
+    setSelectedRequestKeys((currentKeys) => allPendingSelected
+      ? currentKeys.filter((key) => !pendingKeys.includes(key))
+      : Array.from(new Set([...currentKeys, ...pendingKeys]))
+    )
+  }
+
+  const handleBulkDecision = (status) => {
+    const selectedRequests = leaveRequests.filter((request) =>
+      selectedRequestKeys.includes(getRequestKey(request)) && request.status === 'Pending approval'
+    )
+    if (selectedRequests.length === 0) return
+
+    const decisionApprover = askApproverIdentity()
+    if (!decisionApprover) return
+
+    let rejectionReason = ''
+    if (status === 'Rejected') {
+      rejectionReason = window.prompt('Enter the rejection reason for the selected leave requests:')?.trim() || ''
+      if (!rejectionReason) {
+        window.alert('A rejection reason is required.')
+        return
+      }
+    }
+
+    if (!window.confirm(`Are you sure you want to ${status.toLowerCase()} ${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'}?`)) {
+      return
+    }
+
+    const selectedKeys = new Set(selectedRequests.map(getRequestKey))
+    const updatedRequests = leaveRequests.map((request) => selectedKeys.has(getRequestKey(request))
+      ? {
+        ...request,
+        status,
+        rejectionReason,
+        reviewedBy: decisionApprover.name,
+        reviewedRole: decisionApprover.role,
+        reviewedAt: new Date().toISOString(),
+      }
+      : request
+    )
+
+    localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    setLeaveRequests(updatedRequests)
+    setSelectedRequestKeys([])
+    setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} ${status.toLowerCase()}.`)
+    window.setTimeout(() => setSuccessMessage(''), 3000)
+  }
+
+  const closureRequests = leaveRequests.filter((request) => request.status === 'Approved')
+
   if (!accessGranted) {
     return (
       <main className="admin-dashboard leave-requests-page leave-access-screen">
@@ -123,12 +237,27 @@ function AdminLeaveRequests() {
           <div className="leave-access-heading">
             <div>
               <span className="dashboard-label">CONFIDENTIAL ACCESS</span>
-              <h1>Leave Requests</h1>
-              <p>Enter the password to manage student leave requests.</p>
+              <h1>{activeView === 'approval' ? 'Leave Approval' : activeView === 'closure' ? 'Leave Closure' : 'Leave Management'}</h1>
+              <p>{activeView === 'approval' ? 'Enter the password to open Leave Approval.' : 'Choose a leave workspace to continue.'}</p>
               <p className="leave-approval-note">Note: Leaves can be approved by CFI/DCFI.</p>
             </div>
           </div>
-          <form className="leave-access-form" onSubmit={handleAccess}>
+          <div className="leave-view-tabs leave-access-tabs" role="tablist" aria-label="Leave management views">
+            <button type="button" className={activeView === 'approval' ? 'active' : ''} onClick={() => setActiveView('approval')}>
+              LEAVE APPROVAL
+            </button>
+            <button
+              type="button"
+              className={activeView === 'closure' ? 'active' : ''}
+              onClick={() => {
+                setActiveView('closure')
+                setAccessGranted(true)
+              }}
+            >
+              LEAVE CLOSURE
+            </button>
+          </div>
+          {activeView === 'approval' && <form className="leave-access-form" onSubmit={handleAccess}>
             <label className="leave-password-field">
               PASSWORD
               <input
@@ -142,10 +271,10 @@ function AdminLeaveRequests() {
             </label>
             {accessError && <div className="login-error">{accessError}</div>}
             <button type="submit" className="btn-leave-access">VIEW LEAVE REQUESTS</button>
-            <button type="button" className="leave-page-back" onClick={() => navigate('/admin')}>
-              BACK TO ADMIN PORTAL
-            </button>
-          </form>
+          </form>}
+          <button type="button" className="leave-page-back" onClick={() => navigate('/admin')}>
+            BACK TO ADMIN PORTAL
+          </button>
         </section>
       </main>
     )
@@ -155,7 +284,14 @@ function AdminLeaveRequests() {
     <main className="admin-dashboard leave-requests-page">
       <header className="dashboard-header">
         <div>
-          <div className="dashboard-brand">AVVYANA</div>
+          <button
+            type="button"
+            className="dashboard-brand-button"
+            onClick={() => navigate('/')}
+            aria-label="Go to home page"
+          >
+            <span className="dashboard-brand">Avyanna</span>
+          </button>
           <div className="dashboard-subtitle">AVIATION ACADEMY</div>
         </div>
         <div className="dashboard-header-actions">
@@ -170,13 +306,26 @@ function AdminLeaveRequests() {
         <div className="dashboard-heading">
           <div>
             <span className="dashboard-label">STUDENT SERVICES</span>
-            <h1>Leave Requests</h1>
-            <p>Review, filter, approve, and reject student leave requests.</p>
+            <h1>{activeView === 'approval' ? 'Leave Approval' : 'Leave Closure'}</h1>
+            <p>{activeView === 'approval'
+              ? 'Review, filter, approve, and reject student leave requests.'
+              : 'Track approved students, confirm returns, and close completed leave records.'}</p>
           </div>
-          <strong>{filteredRequests.length} REQUESTS</strong>
+          <strong>{activeView === 'approval' ? filteredRequests.length : closureRequests.length} RECORDS</strong>
         </div>
 
-        <div className="leave-request-filters">
+        {activeView === 'approval' && (
+          <div className="leave-view-tabs" role="tablist" aria-label="Leave management views">
+            <button type="button" className="active" onClick={() => setActiveView('approval')}>
+              LEAVE APPROVAL
+            </button>
+            <button type="button" onClick={() => setActiveView('closure')}>
+              LEAVE CLOSURE
+            </button>
+          </div>
+        )}
+
+        {activeView === 'approval' && <div className="leave-request-filters">
           <label>
             SELECT DATE
             <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
@@ -193,12 +342,36 @@ function AdminLeaveRequests() {
               </button>
             ))}
           </div>
-        </div>
+          <div className="leave-bulk-actions" aria-label="Bulk leave actions">
+            <span className="leave-bulk-count">
+              {pendingFilteredRequests.length} pending
+              {selectedRequestKeys.length > 0 ? ` | ${selectedRequestKeys.length} selected` : ''}
+            </span>
+            <button type="button" className="btn-select-all" onClick={toggleSelectAllPending} disabled={pendingFilteredRequests.length === 0}>
+              {allPendingSelected ? 'CLEAR SELECTION' : 'SELECT ALL PENDING'}
+            </button>
+            <button type="button" className="btn-approve" onClick={() => handleBulkDecision('Approved')} disabled={selectedRequestKeys.length === 0}>
+              APPROVE SELECTED ({selectedRequestKeys.length})
+            </button>
+            <button type="button" className="btn-reject" onClick={() => handleBulkDecision('Rejected')} disabled={selectedRequestKeys.length === 0}>
+              REJECT SELECTED ({selectedRequestKeys.length})
+            </button>
+          </div>
+        </div>}
 
-        <div className="submission-table-wrapper">
+        {activeView === 'approval' ? <div className="submission-table-wrapper">
           <table className="submission-table leave-request-table">
             <thead>
               <tr>
+                <th className="leave-select-column">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all pending leave requests"
+                    checked={allPendingSelected}
+                    onChange={toggleSelectAllPending}
+                    disabled={pendingFilteredRequests.length === 0}
+                  />
+                </th>
                 <th>Student</th>
                 <th>From</th>
                 <th>To</th>
@@ -206,6 +379,7 @@ function AdminLeaveRequests() {
                 <th>Reason</th>
                 <th>Status</th>
                 <th>Rejection reason</th>
+                <th>Return status</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -214,6 +388,16 @@ function AdminLeaveRequests() {
                 const originalIndex = leaveRequests.indexOf(request)
                 return (
                   <tr key={`${request.studentId}-${request.requestedAt}-${index}`}>
+                    <td className="leave-select-column">
+                      {request.status === 'Pending approval' && (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${request.studentName || request.studentId}`}
+                          checked={selectedRequestKeys.includes(getRequestKey(request))}
+                          onChange={() => toggleRequestSelection(request)}
+                        />
+                      )}
+                    </td>
                     <td><strong>{request.studentName || request.studentId}</strong><br />{request.studentId}</td>
                     <td>{formatDate(request.fromDate)}</td>
                     <td>{formatDate(request.toDate)}</td>
@@ -225,6 +409,12 @@ function AdminLeaveRequests() {
                       </span>
                     </td>
                     <td>{request.rejectionReason || '-'}</td>
+                    <td>
+                      {(() => {
+                        const returnStatus = getReturnStatus(request)
+                        return <span className={`availability-status ${returnStatus.className}`}>{returnStatus.label}</span>
+                      })()}
+                    </td>
                     <td>
                       {request.status === 'Pending approval' ? (
                         <div className="leave-decision-actions">
@@ -254,11 +444,49 @@ function AdminLeaveRequests() {
                   </tr>
                 )
               }) : (
-                <tr><td colSpan="8" className="empty-submissions">No leave requests match these filters.</td></tr>
+                <tr><td colSpan="10" className="empty-submissions">No leave requests match these filters.</td></tr>
               )}
             </tbody>
           </table>
-        </div>
+        </div> : <div className="submission-table-wrapper">
+          <table className="submission-table leave-request-table">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Leave from</th>
+                <th>Leave to</th>
+                <th>Total days</th>
+                <th>Approved by</th>
+                <th>Actual return</th>
+                <th>Return status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {closureRequests.length > 0 ? closureRequests.map((request, index) => {
+                const returnStatus = getReturnStatus(request)
+                return (
+                  <tr key={`${request.studentId}-${request.requestedAt}-${index}`}>
+                    <td><strong>{request.studentName || request.studentId}</strong><br />{request.studentId}</td>
+                    <td>{formatDate(request.fromDate)}</td>
+                    <td>{formatDate(request.toDate)}</td>
+                    <td><strong>{getLeaveDuration(request.fromDate, request.toDate)}</strong></td>
+                    <td>{request.reviewedBy || approverNames[request.reviewedRole] || '-'}</td>
+                    <td>{request.actualReturnDate ? formatDate(request.actualReturnDate) : '-'}</td>
+                    <td><span className={`availability-status ${returnStatus.className}`}>{returnStatus.label}</span></td>
+                    <td>
+                      {request.returnReportedAt && !request.closureClosedAt
+                        ? <button type="button" className="btn-close-leave" onClick={() => closeLeave(request)}>CLOSE LEAVE</button>
+                        : <span className="reviewed-by">{request.closureClosedAt ? 'Closed' : 'Waiting for return'}</span>}
+                    </td>
+                  </tr>
+                )
+              }) : (
+                <tr><td colSpan="8" className="empty-submissions">No approved leave records yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>}
       </section>
     </main>
   )

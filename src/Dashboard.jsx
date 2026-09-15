@@ -7,10 +7,37 @@ const approverNames = {
   DCFI: 'Captain SM',
 }
 
+const allExercises = [
+  'CCTS (Dual)',
+  'CCTS (Solo)',
+  'CCTS (PC)',
+  'CCTS (FI Check)',
+  'CCTS (AFI Check)',
+  'Instrument Flying',
+  'CCTS (Corrective)',
+  'GF (Dual)',
+  'GF (Solo)',
+  'X-Country (Dual)',
+  'X-Country (Solo)',
+  'Night (Dual)',
+  'Night (Solo)',
+  'X-Country Check',
+  'GF Check',
+  '10Hrs Progress Check',
+  'CPL Checks',
+  'Multi Fam',
+  'Multi GF',
+  'Multi CCTS',
+  'Multi IF',
+  'Multi Night',
+  'Multi Checks',
+]
+
 function Dashboard() {
   const navigate = useNavigate()
   const [searchSplNumber, setSearchSplNumber] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
+  const [selectedExercise, setSelectedExercise] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [showLeaveRequests, setShowLeaveRequests] = useState(false)
@@ -42,6 +69,16 @@ function Dashboard() {
     : legacySubmission
       ? [legacySubmission]
       : []
+
+  const exerciseOptions = Array.from(new Set([
+    ...allExercises,
+    ...submissions.flatMap((submission) =>
+      (submission.exercise || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item && !/not applicable/i.test(item))
+    ),
+  ])).sort((first, second) => first.localeCompare(second))
 
   // Delete a single submission
   const handleDeleteSubmission = (indexToDelete) => {
@@ -179,11 +216,18 @@ function Dashboard() {
         getStudentName(submission).toLowerCase().includes(searchValue)
     })
     : submissions
-  ).filter((submission) =>
-    !selectedDate || getSubmissionDateKey(
+  ).filter((submission) => {
+    const matchesDate = !selectedDate || getSubmissionDateKey(
       submission.flightDate || submission.submittedAt
     ) === selectedDate
-  ).sort((first, second) =>
+
+    const matchesExercise = !selectedExercise || (submission.exercise || '')
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .includes(selectedExercise.toLowerCase())
+
+    return matchesDate && matchesExercise
+  }).sort((first, second) =>
     new Date(second.flightDate || second.submittedAt || 0) -
     new Date(first.flightDate || first.submittedAt || 0)
   )
@@ -199,6 +243,23 @@ function Dashboard() {
     return Number.isNaN(date.getTime())
       ? '-'
       : date.toLocaleDateString()
+  }
+
+  const getWaitingDuration = (dateValue) => {
+    if (!dateValue) return '-'
+
+    const date = new Date(
+      dateValue.length === 10
+        ? `${dateValue}T00:00:00`
+        : dateValue
+    )
+
+    if (Number.isNaN(date.getTime())) return '-'
+
+    const diffTime = Math.max(0, Date.now() - date.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    return diffDays === 0 ? 'Today' : `${diffDays} day${diffDays === 1 ? '' : 's'}`
   }
 
   const getLeaveDuration = (fromDate, toDate) => {
@@ -277,9 +338,13 @@ function Dashboard() {
   )
   const searchedDaysInProgram = getDaysInProgram(searchedStudentSubmissions)
 
-  const availableSubmissions = filteredSubmissions.filter(
-    (submission) => submission.availability === 'available'
-  )
+  const availableSubmissions = filteredSubmissions
+    .filter((submission) => submission.availability === 'available')
+    .sort((first, second) => {
+      const firstTime = new Date(first.flightDate || first.submittedAt || 0).getTime()
+      const secondTime = new Date(second.flightDate || second.submittedAt || 0).getTime()
+      return firstTime - secondTime
+    })
   const leaveSubmissions = filteredSubmissions.filter(
     (submission) => ['seventh-day', 'not-available'].includes(submission.availability)
   )
@@ -288,7 +353,14 @@ function Dashboard() {
     <main className="admin-dashboard">
       <header className="dashboard-header">
         <div>
-          <div className="dashboard-brand">AVVYANA</div>
+          <button
+            type="button"
+            className="dashboard-brand-button"
+            onClick={() => navigate('/')}
+            aria-label="Go to home page"
+          >
+            <span className="dashboard-brand">Avyanna</span>
+          </button>
           <div className="dashboard-subtitle">AVIATION ACADEMY</div>
         </div>
 
@@ -391,18 +463,36 @@ function Dashboard() {
                 onChange={(e) => setSearchSplNumber(e.target.value)}
               />
             </div>
-            {(searchSplNumber || selectedDate) && (
+            {(searchSplNumber || selectedDate || selectedExercise) && (
               <button
                 type="button"
                 className="dashboard-clear-button"
                 onClick={() => {
                   setSearchSplNumber('')
                   setSelectedDate('')
+                  setSelectedExercise('')
                 }}
               >
                 CLEAR
               </button>
             )}
+
+            <div className="dashboard-filter-field">
+              <label className="dashboard-exercise-label" htmlFor="admin-exercise-filter">EXERCISE</label>
+              <select
+                id="admin-exercise-filter"
+                className="dashboard-exercise-select"
+                value={selectedExercise}
+                onChange={(event) => setSelectedExercise(event.target.value)}
+              >
+                <option value="">ALL EXERCISES</option>
+                {exerciseOptions.map((exercise) => (
+                  <option key={exercise} value={exercise}>
+                    {exercise}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -446,6 +536,7 @@ function Dashboard() {
                             <th>Reason</th>
                             <th>Status</th>
                             <th>Rejection reason</th>
+                            <th>Return status</th>
                             <th>Action</th>
                           </tr>
                         </thead>
@@ -462,6 +553,7 @@ function Dashboard() {
                                   <span className={`availability-status ${request.status === 'Approved' ? 'available' : request.status === 'Rejected' ? 'not-available' : 'pending'}`}>{request.status}</span>
                                 </td>
                                 <td>{request.rejectionReason || '-'}</td>
+                                <td>{request.returnReportedAt ? 'Returned' : request.status === 'Approved' ? 'Awaiting return' : '-'}</td>
                                 <td>
                                   {request.status === 'Pending approval' ? (
                                     <div className="leave-decision-actions">
@@ -510,7 +602,7 @@ function Dashboard() {
                               </tr>
                             ))
                           ) : (
-                            <tr><td colSpan="8" className="empty-submissions">No leave requests yet.</td></tr>
+                            <tr><td colSpan="9" className="empty-submissions">No leave requests yet.</td></tr>
                           )}
                         </tbody>
                       </table>
@@ -541,7 +633,8 @@ function Dashboard() {
                 <tr>
                   <th>Date</th>
                   <th>Name</th>
-                  <th>Type of exercise</th>
+                  <th>Waiting for</th>
+                  <th>Waiting days</th>
                   <th>Total hours</th>
                   <th>Status</th>
                   <th>Action</th>
@@ -554,6 +647,7 @@ function Dashboard() {
                       <td>{formatSubmissionDate(submission.flightDate || submission.submittedAt)}</td>
                       <td><strong>{getStudentDetails(submission)}</strong></td>
                       <td>{submission.exercise}</td>
+                      <td>{getWaitingDuration(submission.flightDate || submission.submittedAt)}</td>
                       <td>{submission.totalFlyingHours} hrs</td>
                       <td><span className="availability-status available">Available</span></td>
                       <td>
@@ -593,7 +687,7 @@ function Dashboard() {
               <tr>
                 <th>Date</th>
                 <th>Name</th>
-                <th>Type of exercise</th>
+                <th>Waiting for</th>
                 <th>Total hours</th>
                 <th>7th Day</th>
                 <th>Not Available</th>

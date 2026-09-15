@@ -20,6 +20,77 @@ function getLeaveDuration(fromDate, toDate) {
   return `${Math.floor(difference / (1000 * 60 * 60 * 24)) + 1} days`
 }
 
+function getTodayDate() {
+  const today = new Date()
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+}
+
+function generateTrackingId() {
+  return `AVV-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+}
+
+function getStoredLeaveRequests() {
+  try {
+    const storedRequests = localStorage.getItem('leaveRequests')
+    if (!storedRequests) return []
+
+    const parsedRequests = JSON.parse(storedRequests)
+    return Array.isArray(parsedRequests) ? parsedRequests : []
+  } catch {
+    return []
+  }
+}
+
+function formatStudentDate(dateValue) {
+  if (!dateValue) return '-'
+  const date = new Date(`${dateValue}T00:00:00`)
+  return Number.isNaN(date.getTime())
+    ? '-'
+    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function getLeaveProgress(request) {
+  const closureCompleted = Boolean(request.returnReportedAt || request.closureClosedAt)
+
+  if (request.status === 'Rejected') {
+    return [
+      { label: 'Leave raised', state: 'complete' },
+      { label: 'Pending with CFI/DCFI', state: 'rejected' },
+      { label: 'Leave closure', state: 'locked' },
+    ]
+  }
+
+  if (request.status === 'Approved') {
+    return [
+      { label: 'Leave raised', state: 'complete' },
+      { label: 'Pending with CFI/DCFI', state: 'complete' },
+      { label: 'Leave closure', state: closureCompleted ? 'complete' : 'active' },
+    ]
+  }
+
+  return [
+    { label: 'Leave raised', state: 'complete' },
+    { label: 'Pending with CFI/DCFI', state: 'active' },
+    { label: 'Leave closure', state: 'upcoming' },
+  ]
+}
+
+function getRequestStatusLabel(request) {
+  if (!request) {
+    return 'No requests yet'
+  }
+
+  if (request.status === 'Pending approval') {
+    return request.returnReportedAt || request.closureClosedAt ? 'Leave closed' : 'Pending with CFI/DCFI'
+  }
+
+  if (request.status === 'Approved') {
+    return request.returnReportedAt || request.closureClosedAt ? 'Leave closed' : 'Approved'
+  }
+
+  return request.status
+}
+
 function LeaveRequest() {
   const navigate = useNavigate()
   const studentId = localStorage.getItem('studentId') || 'AVV-0001'
@@ -31,9 +102,13 @@ function LeaveRequest() {
   const [error, setError] = useState('')
   const [requests, setRequests] = useState([])
   const [isCreating, setIsCreating] = useState(false)
+  const [requestView, setRequestView] = useState('all')
+
+  const shouldShowForm = requests.length === 0 || isCreating
+  const latestRequest = requests[0] || null
 
   const findStudentRequests = () => {
-    const requests = JSON.parse(localStorage.getItem('leaveRequests') || '[]')
+    const requests = getStoredLeaveRequests()
     return requests
       .filter((request) => request.studentId === studentId)
       .sort((first, second) => new Date(second.requestedAt) - new Date(first.requestedAt))
@@ -81,8 +156,9 @@ function LeaveRequest() {
       reason: reason.trim(),
       status: 'Pending approval',
       requestedAt: new Date().toISOString(),
+      trackingId: generateTrackingId(),
     }
-    const previousRequests = JSON.parse(localStorage.getItem('leaveRequests') || '[]')
+    const previousRequests = getStoredLeaveRequests()
     localStorage.setItem('leaveRequests', JSON.stringify([...previousRequests, request]))
     setRequests(findStudentRequests())
     setIsCreating(false)
@@ -96,16 +172,34 @@ function LeaveRequest() {
     setError('')
   }
 
+  const markReturned = (request) => {
+    if (!window.confirm('Confirm that you have returned to the academy?')) return
+
+    const updatedRequests = getStoredLeaveRequests().map((item) => (
+      item.requestedAt === request.requestedAt
+        ? {
+            ...item,
+            returnReportedAt: new Date().toISOString(),
+            closureClosedAt: new Date().toISOString(),
+          }
+        : item
+    ))
+    localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    setRequests(updatedRequests.filter((item) => item.studentId === studentId).sort(
+      (first, second) => new Date(second.requestedAt) - new Date(first.requestedAt)
+    ))
+  }
+
   return (
     <main className="flight-page">
       <div className="flight-background"></div>
       <div className="flight-overlay"></div>
 
       <header className="flight-header">
-        <div className="academy-brand">
-          <div className="brand-small">AVVYANA</div>
+        <button type="button" className="academy-brand academy-brand-button" onClick={() => navigate('/')} aria-label="Go to home page">
+          <div className="brand-small">Avyanna</div>
           <div className="brand-main">AVIATION ACADEMY</div>
-        </div>
+        </button>
         <div className="student-badge">
           <span>STUDENT</span>
           <strong>{studentId}</strong>
@@ -121,42 +215,138 @@ function LeaveRequest() {
           <div className="availability-heading">
             <div className="section-label">STUDENT SERVICES</div>
             <h1>Leave Request</h1>
-            <p>Submit a leave request for admin review and track its approval status here.</p>
           </div>
 
-          {requests.length > 0 && !isCreating ? (
+          {!isCreating && latestRequest && (
+            <div className="leave-progress leave-progress-summary" aria-label="Leave request progress">
+              <div className="leave-progress-header">Leave Progress</div>
+              {getLeaveProgress(latestRequest).map((step, stepIndex) => {
+                const marker = step.state === 'complete' ? '✓' : step.state === 'rejected' ? '!' : '•'
+
+                return (
+                  <div className={`leave-progress-step ${step.state}`} key={`${step.label}-${stepIndex}`}>
+                    <span className="leave-progress-marker">{marker}</span>
+                    <div className="leave-progress-copy">
+                      <span className="leave-progress-title">{step.label}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {!isCreating && (
+            <div className="leave-summary-card" aria-label="Leave request summary">
+              <div className="leave-summary-label">APPROVED LEAVES TAKEN</div>
+              <div className="leave-summary-value">{requests.filter((request) => request.status === 'Approved').length}</div>
+              <div className="leave-summary-caption">
+                {requests.filter((request) => request.status === 'Approved').length === 0
+                  ? 'No approved leaves yet.'
+                  : requests.filter((request) => request.status === 'Approved').length === 1
+                    ? '1 approved leave taken so far.'
+                    : `${requests.filter((request) => request.status === 'Approved').length} approved leaves taken so far.`}
+              </div>
+            </div>
+          )}
+
+          {!isCreating && (
             <div className="leave-request-history">
-              {requests.map((request, index) => {
+              <div className="leave-history-intro">
+                <div className="leave-history-copy">
+                  <strong>Leave request history</strong>
+                  <span>Track every leave request, approval decision, and closure from one place.</span>
+                </div>
+                <div className="leave-history-actions">
+                  <button
+                    type="button"
+                    className={`leave-history-tab ${requestView === 'all' ? 'active' : ''}`}
+                    onClick={() => setRequestView('all')}
+                  >
+                    All requests
+                  </button>
+                  <button
+                    type="button"
+                    className={`leave-history-tab ${requestView === 'approved' ? 'active' : ''}`}
+                    onClick={() => setRequestView('approved')}
+                  >
+                    Approved leaves
+                  </button>
+                  <button type="button" className="new-leave-request-button" onClick={startNewRequest}>
+                    RAISE NEW REQUEST
+                  </button>
+                </div>
+              </div>
+
+              {(() => {
+                const visibleRequests = requestView === 'approved'
+                  ? requests.filter((request) => request.status === 'Approved')
+                  : requests
+
+                return (
+                  <section className="leave-request-group all-requests">
+                    <div className="leave-request-group-heading">
+                      <strong>{requestView === 'approved' ? 'Approved leaves' : 'Request history'}</strong>
+                      <span>{visibleRequests.length}</span>
+                    </div>
+                    {visibleRequests.length > 0 ? visibleRequests.map((request, index) => {
                 const statusClass = request.status.toLowerCase().replace(' ', '-')
                 const reviewedBy = request.reviewedBy || approverNames[request.reviewedRole] || 'the admin'
 
                 return (
                   <article className={`leave-request-record ${statusClass}`} key={`${request.requestedAt}-${index}`}>
+                    <div className="leave-request-meta">
+                      <span className="leave-request-meta-label">Tracking ID</span>
+                      <strong>{request.trackingId || 'AVV-TRACK'}</strong>
+                      <small>{new Date(request.requestedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</small>
+                    </div>
                     <div className="leave-status-banner">
-                      <strong>{request.status === 'Approved' ? '✓ APPROVED' : request.status === 'Rejected' ? '× REJECTED' : '◷ PENDING REVIEW'}</strong>
+                      <strong>
+                        {request.status === 'Approved'
+                          ? (request.returnReportedAt || request.closureClosedAt ? '✓ LEAVE CLOSED' : '✓ APPROVED')
+                          : request.status === 'Rejected'
+                            ? '× REJECTED'
+                            : '◷ PENDING WITH CFI/DCFI'}
+                      </strong>
                       <span>
                         {request.status === 'Approved'
-                          ? `Approved by ${reviewedBy}.`
+                          ? (request.returnReportedAt || request.closureClosedAt
+                            ? `Leave closed successfully. Approved by ${reviewedBy}.`
+                            : `Approved by ${reviewedBy}.`)
                           : request.status === 'Rejected'
                             ? `Rejected by ${reviewedBy}. Reason: ${request.rejectionReason || 'Please contact the academy.'}`
-                            : 'Your leave request is waiting for admin approval.'}
+                            : 'Your leave request has been raised and is pending review by CFI/DCFI.'}
                       </span>
+                      {request.status === 'Approved' && (request.returnReportedAt
+                        ? <small className="return-confirmed">✓ Return reported to academy</small>
+                        : getTodayDate() >= request.toDate && (
+                          <button type="button" className="return-report-button" onClick={() => markReturned(request)}>
+                            CONFIRM RETURN TO ACADEMY
+                          </button>
+                        ))}
                     </div>
                     <div className={`leave-request-pending ${statusClass}`}>
                       <span className="pending-icon">{request.status === 'Approved' ? '✓' : request.status === 'Rejected' ? '!' : '◷'}</span>
                       <span className="leave-request-details">
-                        <strong>{request.status === 'Approved' ? 'Request approved' : request.status === 'Rejected' ? 'Request rejected' : 'Request raised'}</strong>
-                        <small>{request.fromDate} to {request.toDate} · {getLeaveDuration(request.fromDate, request.toDate)}</small>
+                        <strong>
+                          {request.status === 'Approved'
+                            ? (request.returnReportedAt || request.closureClosedAt ? 'Leave closed' : 'Approved')
+                            : request.status === 'Rejected'
+                              ? 'Request rejected'
+                              : 'Pending with CFI/DCFI'}
+                        </strong>
+                        <small>{formatStudentDate(request.fromDate)} to {formatStudentDate(request.toDate)} · {getLeaveDuration(request.fromDate, request.toDate)}</small>
                       </span>
                     </div>
                   </article>
                 )
+                    }) : <div className="leave-empty-view">No leave requests yet. Raise your first request below.</div>}
+                  </section>
+                )
               })}
-              <button type="button" className="new-leave-request-button" onClick={startNewRequest}>
-                RAISE ANOTHER REQUEST
-              </button>
             </div>
-          ) : (
+          )}
+
+          {shouldShowForm && (
             <form className="leave-request-box" onSubmit={handleSubmit}>
               <div className="leave-form-intro">
                 <strong>Plan your time away</strong>

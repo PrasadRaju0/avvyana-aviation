@@ -77,7 +77,7 @@ const server = http.createServer(async (request, response) => {
       await transporter.sendMail({
         from: process.env.SMTP_FROM,
         to: email,
-        subject: 'Avvyana Aviation Academy password reset OTP',
+        subject: 'Avyanna Aviation Academy password reset OTP',
         text: `Your password reset OTP is ${otp}. It expires in 5 minutes.`,
       })
       return sendJson(response, 200, { message: 'OTP sent to your email address.' })
@@ -104,7 +104,7 @@ const server = http.createServer(async (request, response) => {
 
       const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       await client.messages.create({
-        body: `Your Avvyana Aviation Academy OTP is ${otp}. It expires in 5 minutes.`,
+        body: `Your Avyanna Aviation Academy OTP is ${otp}. It expires in 5 minutes.`,
         from: process.env.TWILIO_PHONE_NUMBER,
         to: mobileNumber,
       })

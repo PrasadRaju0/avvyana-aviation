@@ -53,7 +53,7 @@ function LoginPage() {
         <div className="hero-overlay"></div>
 
         <div className="hero-content">
-          <div className="brand-mark">AVVYANA</div>
+          <div className="brand-mark">Avyanna</div>
           <div className="brand-subtitle">AVIATION ACADEMY</div>
           <div className="hero-line"></div>
 
@@ -68,12 +68,12 @@ function LoginPage() {
 
         </div>
 
-        <div className="hero-footer">© 2026 Avvyana Aviation Academy</div>
+        <div className="hero-footer">© 2026 Avyanna Aviation Academy</div>
       </div>
 
       <div className="login-panel">
         <div className="login-box">
-          <div className="mobile-logo">AVVYANA</div>
+          <div className="mobile-logo">Avyanna</div>
 
           <div className="welcome">
             <span>STUDENT PORTAL</span>
@@ -153,7 +153,7 @@ function LoginPage() {
 
           <div className="support">
             <span>Need assistance?</span>
-            <a href="mailto:support@avvyana.com">Contact Academy Support</a>
+            <a href="mailto:support@avyanna.com">Contact Academy Support</a>
           </div>
         </div>
       </div>
@@ -192,7 +192,7 @@ function SignupPage() {
         <div className="signup-success-container">
           <div className="success-icon">✓</div>
           <h1>Account Created Successfully!</h1>
-          <p className="success-message">Thank you for joining AVVYANA Aviation Academy!</p>
+          <p className="success-message">Thank you for joining Avyanna Aviation Academy!</p>
           
           <div className="account-details">
             <div className="detail-row">
@@ -272,7 +272,7 @@ function ForgotPasswordPage() {
 
   return (
     <main className="admin-page"><div className="admin-card">
-      <div className="brand-mark">AVVYANA</div><div className="brand-subtitle">AVIATION ACADEMY</div>
+      <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
       <span className="admin-label">STUDENT PORTAL</span><h1>Reset student password</h1>
       <p>Verify your SPL Number and email, then enter the OTP sent by email.</p>
       <form onSubmit={handleReset}>
@@ -294,7 +294,7 @@ function StudentAccountForm({ title, submitLabel, form, setForm, error, onSubmit
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
   return (
     <main className="admin-page"><div className="admin-card">
-      <div className="brand-mark">AVVYANA</div><div className="brand-subtitle">AVIATION ACADEMY</div>
+      <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
       <span className="admin-label">STUDENT PORTAL</span><h1>{title}</h1>
       <form onSubmit={onSubmit}>
         {!reset && <div className="admin-form-group"><label>NAME *</label><input value={form.name} onChange={update('name')} required /></div>}
@@ -325,7 +325,7 @@ function AdminPortalHome() {
   return (
     <main className="admin-page">
       <div className="admin-card admin-portal-home">
-        <div className="brand-mark">AVVYANA</div>
+        <div className="brand-mark">Avyanna</div>
         <div className="brand-subtitle">AVIATION ACADEMY</div>
         <span className="admin-label">ADMIN PORTAL</span>
         <h1>Choose a workspace</h1>
@@ -391,7 +391,7 @@ function AdminPage() {
   return (
     <main className="admin-page">
       <div className="admin-card">
-        <div className="brand-mark">AVVYANA</div>
+        <div className="brand-mark">Avyanna</div>
         <div className="brand-subtitle">AVIATION ACADEMY</div>
         <span className="admin-label">ADMIN PORTAL</span>
         <h1>Administrator sign in</h1>
@@ -464,7 +464,7 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
   return (
     <main className="admin-page"><div className="admin-card">
-      <div className="brand-mark">AVVYANA</div><div className="brand-subtitle">AVIATION ACADEMY</div>
+      <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
       <span className="admin-label">ADMIN PORTAL</span><h1>{title}</h1>
       <form onSubmit={onSubmit}>
         {!reset && <div className="admin-form-group"><label>FULL NAME</label><input value={form.name} onChange={update('name')} required /></div>}

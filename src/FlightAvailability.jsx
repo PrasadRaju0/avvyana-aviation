@@ -8,15 +8,60 @@ const approverNames = {
   DCFI: 'Captain SM',
 }
 
-const exercises = [
+const singleEngineExercises = [
   'CCTS (Dual)',
   'CCTS (Solo)',
+  'CCTS (PC)',
+  'CCTS (FI Check)',
+  'CCTS (AFI Check)',
+  'Instrument Flying',
+  'CCTS (Corrective)',
   'GF (Dual)',
   'GF (Solo)',
   'X-Country (Dual)',
   'X-Country (Solo)',
+  'Night (Dual)',
+  'Night (Solo)',
+  'X-Country Check',
+  'GF Check',
+  '10Hrs Progress Check',
   'CPL Checks',
 ]
+
+const multiEngineExercises = [
+  'Multi Fam',
+  'Multi GF',
+  'Multi CCTS',
+  'Multi IF',
+  'Multi Night',
+  'Multi Checks',
+]
+
+function getLeaveProgress(request) {
+  const closureCompleted = Boolean(request.returnReportedAt || request.closureClosedAt)
+
+  if (request.status === 'Rejected') {
+    return [
+      { label: 'Leave raised', state: 'complete' },
+      { label: 'Pending with CFI/DCFI', state: 'rejected' },
+      { label: 'Leave closure', state: 'locked' },
+    ]
+  }
+
+  if (request.status === 'Approved') {
+    return [
+      { label: 'Leave raised', state: 'complete' },
+      { label: 'Pending with CFI/DCFI', state: 'complete' },
+      { label: 'Leave closure', state: closureCompleted ? 'complete' : 'active' },
+    ]
+  }
+
+  return [
+    { label: 'Leave raised', state: 'complete' },
+    { label: 'Pending with CFI/DCFI', state: 'active' },
+    { label: 'Leave closure', state: 'upcoming' },
+  ]
+}
 
 function FlightAvailability() {
   const navigate = useNavigate()
@@ -36,6 +81,9 @@ function FlightAvailability() {
   const [availability, setAvailability] =
     useState('')
 
+  const [aircraftType, setAircraftType] =
+    useState('')
+
   const [unavailabilityReason, setUnavailabilityReason] =
     useState('')
 
@@ -47,6 +95,19 @@ function FlightAvailability() {
 
   const [error, setError] =
     useState('')
+
+  const [centerNotice, setCenterNotice] =
+    useState('')
+
+  useEffect(() => {
+    if (!centerNotice) return undefined
+
+    const timeoutId = window.setTimeout(() => {
+      setCenterNotice('')
+    }, 2000)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [centerNotice])
 
   const [submitted, setSubmitted] =
     useState(false)
@@ -82,30 +143,40 @@ function FlightAvailability() {
       .sort((first, second) => new Date(second.requestedAt) - new Date(first.requestedAt))[0] || null
   }
 
-  // Check if student already submitted today
-  const checkDailySubmissionLimit = () => {
-    const today = new Date().toISOString().split('T')[0]
-    const lastSubmissionData = localStorage.getItem('lastSubmissionDate')
-    
-    if (lastSubmissionData) {
-      const { date: lastSubmitDate, studentId: lastStudentId } = JSON.parse(lastSubmissionData)
-      
-      // Check if same student and same date
-      if (lastStudentId === studentId && lastSubmitDate === today) {
-        return true // Already submitted today
-      }
-    }
-    return false
+  const getStoredSubmissions = () => {
+    const savedSubmissions = JSON.parse(
+      localStorage.getItem('flightSubmissions') || '[]'
+    )
+    const legacySubmission = JSON.parse(
+      localStorage.getItem('flightSubmission') || 'null'
+    )
+
+    return savedSubmissions.length > 0
+      ? savedSubmissions
+      : legacySubmission
+        ? [legacySubmission]
+        : []
   }
 
-  // Check page load for existing submissions
+  const checkDateSubmissionLimit = () => {
+    if (!selectedFlightDate) return false
+
+    return getStoredSubmissions().some((submission) => {
+      const submissionDate = submission.flightDate ||
+        (submission.submittedAt ? submission.submittedAt.slice(0, 10) : '')
+
+      return submission.studentId === studentId && submissionDate === selectedFlightDate
+    })
+  }
+
+  // Check page load for existing submissions for the selected flight date
   useEffect(() => {
-    if (checkDailySubmissionLimit()) {
+    if (checkDateSubmissionLimit()) {
       setError(
-        '✓ You have already submitted your flight availability today. Submission is limited to once per day.'
+        '✓ You have already submitted your flight availability for this selected flight date. Choose another date to submit again.'
       )
     }
-  }, [studentId])
+  }, [selectedFlightDate, studentId])
 
   useEffect(() => {
     const updateLeaveStatus = () => {
@@ -139,10 +210,10 @@ function FlightAvailability() {
 
     setError('')
 
-    // Check daily submission limit
-    if (checkDailySubmissionLimit()) {
+    // Check whether the selected flight date already has a submission from this student
+    if (checkDateSubmissionLimit()) {
       setError(
-        '⚠️ You have already submitted your flight availability today. You can submit again tomorrow.'
+        '⚠️ You have already submitted your flight availability for this selected flight date. Please choose another date to submit again.'
       )
       return
     }
@@ -150,6 +221,16 @@ function FlightAvailability() {
     if (!availability) {
       setError(
         'Please select your flying availability.'
+      )
+      return
+    }
+
+    if (
+      availability === 'available' &&
+      !aircraftType
+    ) {
+      setError(
+        'Please select whether you are flying Single-Engine (PA-28) or Multi Engine (DA42).'
       )
       return
     }
@@ -198,6 +279,11 @@ function FlightAvailability() {
       flightDate: selectedFlightDate,
 
       availability,
+
+      aircraftType:
+        availability === 'available'
+          ? aircraftType
+          : 'Not Applicable',
 
       exercise:
         availability === 'available'
@@ -302,15 +388,15 @@ function FlightAvailability() {
 
         <header className="flight-header">
 
-          <div className="academy-brand">
+          <button type="button" className="academy-brand academy-brand-button" onClick={() => navigate('/')} aria-label="Go to home page">
             <div className="brand-small">
-              AVVYANA
+              Avyanna
             </div>
 
             <div className="brand-main">
               AVIATION ACADEMY
             </div>
-          </div>
+          </button>
 
           <div className="student-badge">
             <span>STUDENT</span>
@@ -365,6 +451,20 @@ function FlightAvailability() {
                     : '😢 Not Available'}
                 </strong>
               </div>
+
+              {availability === 'available' && (
+                <div className="summary-item">
+                  <span>
+                    AIRCRAFT TYPE
+                  </span>
+
+                  <strong>
+                    {aircraftType === 'single-engine'
+                      ? 'Single-Engine (PA-28)'
+                      : 'Multi Engine (DA42)'}
+                  </strong>
+                </div>
+              )}
 
               {availability ===
                 'available' && (
@@ -423,17 +523,17 @@ function FlightAvailability() {
 
       <header className="flight-header">
 
-        <div className="academy-brand">
+        <button type="button" className="academy-brand academy-brand-button" onClick={() => navigate('/')} aria-label="Go to home page">
 
           <div className="brand-small">
-            AVVYANA
+            Avyanna
           </div>
 
           <div className="brand-main">
             AVIATION ACADEMY
           </div>
 
-        </div>
+        </button>
 
         <div className="student-badge">
 
@@ -450,6 +550,12 @@ function FlightAvailability() {
       {/* MAIN CONTENT */}
 
       <section className="availability-wrapper">
+
+        {centerNotice && (
+          <div className="flight-center-notice">
+            {centerNotice}
+          </div>
+        )}
 
         <div className="availability-card">
 
@@ -478,16 +584,19 @@ function FlightAvailability() {
             )}
 
             {leaveRequestStatus && (
-              <div className={`leave-status-banner ${leaveRequestStatus.status.toLowerCase().replace(' ', '-')}`}>
-                <strong>LEAVE REQUEST: {leaveRequestStatus.status.toUpperCase()}</strong>
-                <span>
-                  {leaveRequestStatus.status === 'Approved'
-                    ? `Approved by ${leaveRequestStatus.reviewedBy || approverNames[leaveRequestStatus.reviewedRole] || 'the admin'}.`
-                    : leaveRequestStatus.status === 'Rejected'
-                      ? `Rejected by ${leaveRequestStatus.reviewedBy || approverNames[leaveRequestStatus.reviewedRole] || 'the admin'}.${leaveRequestStatus.rejectionReason ? ` Reason: ${leaveRequestStatus.rejectionReason}` : ''}`
-                      : 'Your leave request is waiting for admin approval.'}
-                </span>
-              </div>
+              <>
+                <div className={`leave-status-banner ${leaveRequestStatus.status.toLowerCase().replace(' ', '-')}`}>
+                  <strong>LEAVE REQUEST: {leaveRequestStatus.status.toUpperCase()}</strong>
+                  <span>
+                    {leaveRequestStatus.status === 'Approved'
+                      ? `Approved by ${leaveRequestStatus.reviewedBy || approverNames[leaveRequestStatus.reviewedRole] || 'the admin'}.`
+                      : leaveRequestStatus.status === 'Rejected'
+                        ? `Rejected by ${leaveRequestStatus.reviewedBy || approverNames[leaveRequestStatus.reviewedRole] || 'the admin'}.${leaveRequestStatus.rejectionReason ? ` Reason: ${leaveRequestStatus.rejectionReason}` : ''}`
+                        : 'Your leave request is waiting for admin approval.'}
+                  </span>
+                </div>
+
+              </>
             )}
 
           </div>
@@ -647,7 +756,7 @@ function FlightAvailability() {
               </div>
             )}
 
-            {/* EXERCISE */}
+            {/* AIRCRAFT TYPE */}
 
             {availability ===
               'available' && (
@@ -656,14 +765,100 @@ function FlightAvailability() {
                 <div className="form-section-title">
                   02
                   <span>
+                    SELECT AIRCRAFT TYPE
+                  </span>
+                </div>
+
+                <div className="availability-options">
+
+                  <button
+                    type="button"
+                    className={`availability-option ${
+                      aircraftType === 'single-engine'
+                        ? 'selected available'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      setAircraftType('single-engine')
+                      setExercise([])
+                      setCenterNotice('')
+                      setError('')
+                    }}
+                  >
+                    <span className="option-icon">
+                      ✈
+                    </span>
+
+                    <span className="option-content">
+                      <strong>
+                        Single-Engine (PA-28)
+                      </strong>
+                      <small>
+                        Choose this for PA-28 flying availability.
+                      </small>
+                    </span>
+
+                    <span className="option-radio">
+                      {aircraftType === 'single-engine' ? '●' : '○'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`availability-option ${
+                      aircraftType === 'multi-engine'
+                        ? 'selected available'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      setAircraftType('multi-engine')
+                      setExercise([])
+                      setCenterNotice('Broooo Multiiii 😱')
+                      setError('')
+                    }}
+                  >
+                    <span className="option-icon">
+                      ✈
+                    </span>
+
+                    <span className="option-content">
+                      <strong>
+                        Multi Engine (DA42)
+                      </strong>
+                      <small>
+                        Choose this for DA42 flying availability.
+                      </small>
+                    </span>
+
+                    <span className="option-radio">
+                      {aircraftType === 'multi-engine' ? '●' : '○'}
+                    </span>
+                  </button>
+
+                </div>
+
+              </div>
+            )}
+
+            {/* EXERCISE */}
+
+            {availability ===
+              'available' && aircraftType && (
+              <div className="form-section">
+
+                <div className="form-section-title">
+                  03
+                  <span>
                     SELECT EXERCISE
                   </span>
                 </div>
 
                 <div className="exercise-grid">
 
-                  {exercises.map(
-                    (item) => (
+                  {(aircraftType === 'multi-engine'
+                    ? multiEngineExercises
+                    : singleEngineExercises
+                  ).map((item) => (
                       <button
                         type="button"
                         key={item}
@@ -709,7 +904,7 @@ function FlightAvailability() {
               <div className="form-section-title">
                 {availability ===
                 'available'
-                  ? '03'
+                  ? '04'
                   : availability === 'not-available'
                     ? '03'
                     : '02'}
@@ -801,7 +996,7 @@ function FlightAvailability() {
 
           <div className="availability-footer">
             <span>
-              Avvyana Aviation Academy
+              Avyanna Aviation Academy
             </span>
 
             <span>
