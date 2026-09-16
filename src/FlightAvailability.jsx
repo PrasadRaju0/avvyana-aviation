@@ -669,6 +669,29 @@ function FlightAvailability() {
               </div>
             )}
 
+            {queuedExercises.length > 0 && (
+              <div className="queue-notification" role="status" aria-live="polite">
+                <div className="queue-notification-heading">
+                  <span className="queue-notification-dot" aria-hidden="true"></span>
+                  <strong>ACTIVE QUEUE</strong>
+                  <span className="queue-notification-live">LIVE</span>
+                </div>
+                <p>Your place updates automatically as students ahead complete training.</p>
+                <div className="queue-notification-list">
+                  {queuedExercises.map((queueEntry) => (
+                    <div className="queue-notification-item" key={queueEntry.exercise}>
+                      <span className="queue-notification-exercise">{queueEntry.exercise}</span>
+                      <strong className="queue-notification-position">
+                        {queueEntry.position === 1
+                          ? 'Next up'
+                          : `#${queueEntry.position}`}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {leaveRequestStatus && (
               <>
                 <div className={`leave-status-banner ${leaveRequestStatus.status.toLowerCase().replace(' ', '-')}`}>

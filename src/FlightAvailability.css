@@ -555,6 +555,83 @@
   letter-spacing: 1px;
 }
 
+.queue-notification {
+  margin-top: 18px;
+  padding: 15px 16px;
+  border: 1px solid #e8c878;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fffaf0 0%, #fff4d9 100%);
+  color: #6b5010;
+}
+
+.queue-notification-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8a6500;
+  font-size: 11px;
+  letter-spacing: 0.9px;
+}
+
+.queue-notification-live {
+  margin-left: auto;
+  padding: 4px 7px;
+  border: 1px solid rgba(166, 117, 0, 0.25);
+  border-radius: 999px;
+  color: #9a6b00;
+  font-size: 9px;
+  letter-spacing: 0.8px;
+}
+
+.queue-notification-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d59618;
+  box-shadow: 0 0 0 4px rgba(213, 150, 24, 0.14);
+}
+
+.queue-notification p {
+  margin: 8px 0 12px;
+  color: #806a34;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.queue-notification-list {
+  display: grid;
+  gap: 7px;
+}
+
+.queue-notification-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid rgba(196, 153, 48, 0.24);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.58);
+  color: #5f4b1e;
+  font-size: 12px;
+}
+
+.queue-notification-exercise {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.queue-notification-position {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fff0c7;
+  color: #a76400;
+  font-size: 11px;
+  text-align: right;
+}
+
 .leave-request-meta {
   display: flex;
   align-items: center;
@@ -1820,6 +1897,19 @@
 
   .availability-heading h1 {
     font-size: 30px;
+  }
+
+  .queue-notification {
+    padding: 14px;
+  }
+
+  .queue-notification-item {
+    align-items: flex-start;
+  }
+
+  .queue-notification-position {
+    min-width: 58px;
+    text-align: center;
   }
 
   .availability-options {
