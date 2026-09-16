@@ -875,6 +875,19 @@
   background: #f8fafb;
 }
 
+.exercise-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.queue-position {
+  display: block;
+  margin-top: 4px;
+  color: #b45f19;
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .exercise-option.selected {
   border-color: #174d78;
 

@@ -10,7 +10,12 @@ alter table public.leave_requests enable row level security;
 alter table public.flight_submissions
   add column if not exists unavailability_reason text default '',
   add column if not exists total_flying_hours numeric default 0,
+  add column if not exists queue_status text default 'pending',
+  add column if not exists queue_started_at timestamptz,
+  add column if not exists queue_completed_at timestamptz,
   add column if not exists submitted_at timestamptz default now();
+
+notify pgrst, 'reload schema';
 
 drop policy if exists "student_accounts_select_anon" on public.student_accounts;
 drop policy if exists "student_accounts_insert_anon" on public.student_accounts;
@@ -28,12 +33,17 @@ create policy "student_accounts_update_anon"
 
 drop policy if exists "flight_submissions_select_anon" on public.flight_submissions;
 drop policy if exists "flight_submissions_insert_anon" on public.flight_submissions;
+drop policy if exists "flight_submissions_update_anon" on public.flight_submissions;
 drop policy if exists "flight_submissions_delete_anon" on public.flight_submissions;
 create policy "flight_submissions_select_anon"
   on public.flight_submissions for select to anon, authenticated
   using (true);
 create policy "flight_submissions_insert_anon"
   on public.flight_submissions for insert to anon, authenticated
+  with check (true);
+create policy "flight_submissions_update_anon"
+  on public.flight_submissions for update to anon, authenticated
+  using (true)
   with check (true);
 create policy "flight_submissions_delete_anon"
   on public.flight_submissions for delete to anon, authenticated

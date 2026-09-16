@@ -50,6 +50,8 @@ function Dashboard() {
   const [showLeaveAccessPrompt, setShowLeaveAccessPrompt] = useState(false)
   const [leavePassword, setLeavePassword] = useState('')
   const [leaveAccessError, setLeaveAccessError] = useState('')
+  const [queueClock, setQueueClock] = useState(() => Date.now())
+  const [queueActionId, setQueueActionId] = useState(null)
   const [leaveRequests, setLeaveRequests] = useState(() => JSON.parse(
     localStorage.getItem('leaveRequests') || '[]'
   ))
@@ -75,6 +77,11 @@ function Dashboard() {
     : legacySubmission
       ? [legacySubmission]
       : []
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setQueueClock(Date.now()), 60000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -106,6 +113,9 @@ function Dashboard() {
         studentName: item.student_name,
         flightDate: item.flight_date,
         availability: item.availability,
+        queueStatus: item.queue_status || 'pending',
+        queueStartedAt: item.queue_started_at,
+        queueCompletedAt: item.queue_completed_at,
         aircraftType: item.aircraft_type,
         exercise: item.exercise,
         unavailabilityReason: item.unavailability_reason,
@@ -162,6 +172,74 @@ function Dashboard() {
       ? current.filter((item) => item.id !== submission.id)
       : current)
     setSuccessMessage('Submission deleted successfully')
+    setTimeout(() => setSuccessMessage(''), 3000)
+  }
+
+  const handleQueueSubmission = async (submission) => {
+    if (!submission.id) {
+      setDatabaseError('This submission is local only and cannot be placed in the queue.')
+      return
+    }
+
+    if (queueActionId) return
+
+    const queueStartedAt = new Date().toISOString()
+    setQueueActionId(submission.id)
+    setDatabaseError('')
+    setDatabaseSubmissions((current) => current
+      ? current.map((item) => item.id === submission.id
+        ? { ...item, queueStatus: 'queued', queueStartedAt, queueCompletedAt: null }
+        : item)
+      : current)
+
+    const { error } = await supabase
+      .from('flight_submissions')
+      .update({
+        queue_status: 'queued',
+        queue_started_at: queueStartedAt,
+        queue_completed_at: null,
+      })
+      .eq('id', submission.id)
+
+    if (error) {
+      setDatabaseSubmissions((current) => current
+        ? current.map((item) => item.id === submission.id
+          ? { ...item, queueStatus: 'pending', queueStartedAt: null, queueCompletedAt: null }
+          : item)
+        : current)
+      const missingQueueColumn = /queue_status|queue_started_at|queue_completed_at|schema cache/i.test(error.message)
+      setDatabaseError(missingQueueColumn
+        ? 'Queue is not enabled in Supabase. Run supabase-policies.sql, then refresh this page.'
+        : `Unable to put ${submission.studentId} in the queue: ${error.message}`)
+      setQueueActionId(null)
+      return
+    }
+
+    setQueueActionId(null)
+    setSuccessMessage(`${submission.studentId} added to the exercise queue.`)
+    setTimeout(() => setSuccessMessage(''), 3000)
+  }
+
+  const handleCompleteQueueSubmission = async (submission) => {
+    if (!submission.id) return
+
+    const completedAt = new Date().toISOString()
+    const { error } = await supabase
+      .from('flight_submissions')
+      .update({ queue_status: 'completed', queue_completed_at: completedAt })
+      .eq('id', submission.id)
+
+    if (error) {
+      setDatabaseError(`Unable to complete ${submission.studentId}'s exercise: ${error.message}`)
+      return
+    }
+
+    setDatabaseSubmissions((current) => current
+      ? current.map((item) => item.id === submission.id
+        ? { ...item, queueStatus: 'completed', queueCompletedAt: completedAt }
+        : item)
+      : current)
+    setSuccessMessage(`${submission.studentId}'s exercise was completed. They can submit it again.`)
     setTimeout(() => setSuccessMessage(''), 3000)
   }
 
@@ -358,6 +436,17 @@ function Dashboard() {
     return diffDays === 0 ? 'Today' : `${diffDays} day${diffDays === 1 ? '' : 's'}`
   }
 
+  const getQueueWaitingDuration = (submission) => {
+    if (submission.queueStatus === 'completed') return 'Completed'
+    if (submission.queueStatus !== 'queued' || !submission.queueStartedAt) return '-'
+
+    const startedAt = new Date(submission.queueStartedAt).getTime()
+    if (Number.isNaN(startedAt)) return '-'
+
+    const waitingDays = Math.floor(Math.max(0, queueClock - startedAt) / (1000 * 60 * 60 * 24))
+    return `${waitingDays} day${waitingDays === 1 ? '' : 's'}`
+  }
+
   const getLeaveDuration = (fromDate, toDate) => {
     if (!fromDate || !toDate) return '-'
 
@@ -447,9 +536,14 @@ function Dashboard() {
   const availableSubmissions = filteredSubmissions
     .filter((submission) => submission.availability === 'available')
     .sort((first, second) => {
-      const firstTime = new Date(first.flightDate || first.submittedAt || 0).getTime()
-      const secondTime = new Date(second.flightDate || second.submittedAt || 0).getTime()
-      return firstTime - secondTime
+      const firstExercise = (first.exercise || '').split(',')[0].trim().toLowerCase()
+      const secondExercise = (second.exercise || '').split(',')[0].trim().toLowerCase()
+      const exerciseOrder = firstExercise.localeCompare(secondExercise)
+      if (exerciseOrder !== 0) return exerciseOrder
+
+      const firstSubmittedTime = new Date(first.submittedAt || first.flightDate || 0).getTime()
+      const secondSubmittedTime = new Date(second.submittedAt || second.flightDate || 0).getTime()
+      return firstSubmittedTime - secondSubmittedTime
     })
   const leaveSubmissions = filteredSubmissions.filter(
     (submission) => ['seventh-day', 'not-available'].includes(submission.availability)
@@ -910,19 +1004,50 @@ function Dashboard() {
                   <th>Waiting for</th>
                   <th>Waiting days</th>
                   <th>Total hours</th>
-                  <th>Status</th>
+                  <th>Queue action</th>
                 </tr>
               </thead>
               <tbody>
                 {availableSubmissions.length > 0 ? (
                   availableSubmissions.map((submission, index) => (
-                    <tr key={`${submission.studentId}-available-${submission.submittedAt}-${index}`}>
+                    <tr
+                      key={`${submission.studentId}-available-${submission.submittedAt}-${index}`}
+                      className={submission.queueStatus === 'queued' ? 'queue-row-active' : ''}
+                    >
                       <td>{formatSubmissionDate(submission.flightDate || submission.submittedAt)}</td>
                       <td><strong>{getStudentDetails(submission)}</strong></td>
                       <td>{submission.exercise}</td>
-                      <td>{getWaitingDuration(submission.flightDate || submission.submittedAt)}</td>
+                      <td>
+                        <strong className={submission.queueStatus === 'queued' ? 'waiting-days-active' : ''}>
+                          {getQueueWaitingDuration(submission)}
+                        </strong>
+                      </td>
                       <td>{submission.totalFlyingHours} hrs</td>
-                      <td><span className="availability-status available">Available</span></td>
+                      <td>
+                        {submission.queueStatus === 'queued' ? (
+                          <div className="queue-action-cell">
+                            <span className="availability-status pending">Queued</span>
+                            <button
+                              type="button"
+                              className="btn-approve"
+                              onClick={() => handleCompleteQueueSubmission(submission)}
+                            >
+                              Complete
+                            </button>
+                          </div>
+                        ) : submission.queueStatus === 'completed' ? (
+                          <span className="availability-status available">Completed</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-approve"
+                            disabled={queueActionId === submission.id}
+                            onClick={() => handleQueueSubmission(submission)}
+                          >
+                            {queueActionId === submission.id ? 'Adding...' : 'Put in queue'}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))
                 ) : (

@@ -100,6 +100,9 @@ function FlightAvailability() {
   const [centerNotice, setCenterNotice] =
     useState('')
 
+  const [queuedExercises, setQueuedExercises] =
+    useState([])
+
   useEffect(() => {
     if (!centerNotice) return undefined
 
@@ -109,6 +112,52 @@ function FlightAvailability() {
 
     return () => window.clearTimeout(timeoutId)
   }, [centerNotice])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadQueue = async () => {
+      const queueResult = await supabase
+        .from('flight_submissions')
+        .select('student_id, exercise, submitted_at, queue_status, queue_started_at')
+        .eq('queue_status', 'queued')
+
+      if (queueResult.error) {
+        // Older databases do not have the queue migration yet.
+        setQueuedExercises([])
+        return
+      }
+
+      const { data } = queueResult
+      if (!isMounted || !data) return
+
+      const queueRows = data
+        .flatMap((submission) => (submission.exercise || '')
+          .split(',')
+          .map((exerciseName) => ({
+            studentId: submission.student_id,
+            exercise: exerciseName.trim(),
+            queuedAt: submission.queue_started_at || submission.submitted_at,
+          })))
+        .filter((row) => row.exercise)
+        .sort((first, second) => new Date(first.queuedAt || 0) - new Date(second.queuedAt || 0))
+
+      setQueuedExercises(queueRows
+        .filter((row) => row.studentId === studentId)
+        .map((row) => ({
+          exercise: row.exercise,
+          position: queueRows.filter((candidate) => candidate.exercise === row.exercise
+            && new Date(candidate.queuedAt || 0) <= new Date(row.queuedAt || 0)).length,
+        })))
+    }
+
+    loadQueue()
+    return () => { isMounted = false }
+  }, [studentId])
+
+  const getQueueEntry = (exerciseName) => queuedExercises.find(
+    (entry) => entry.exercise === exerciseName
+  )
 
   const [submitted, setSubmitted] =
     useState(false)
@@ -159,14 +208,21 @@ function FlightAvailability() {
         : []
   }
 
-  const checkDateSubmissionLimit = () => {
+  const checkDateSubmissionLimit = (selectedExercises = []) => {
     if (!selectedFlightDate) return false
 
     return getStoredSubmissions().some((submission) => {
       const submissionDate = submission.flightDate ||
         (submission.submittedAt ? submission.submittedAt.slice(0, 10) : '')
 
-      return submission.studentId === studentId && submissionDate === selectedFlightDate
+      if (submission.studentId !== studentId || submissionDate !== selectedFlightDate) return false
+      if (submission.availability !== 'available') return true
+
+      const existingExercises = (submission.exercise || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+      return selectedExercises.some((item) => existingExercises.includes(item))
     })
   }
 
@@ -211,11 +267,8 @@ function FlightAvailability() {
 
     setError('')
 
-    // Check whether the selected flight date already has a submission from this student
-    if (checkDateSubmissionLimit()) {
-      setError(
-        '⚠️ You have already submitted your flight availability for this selected flight date. Please choose another date to submit again.'
-      )
+    if (availability === 'available' && exercise.some((item) => getQueueEntry(item))) {
+      setError('A selected exercise is already in your queue. Wait until admin completes it before submitting it again.')
       return
     }
 
@@ -252,6 +305,15 @@ function FlightAvailability() {
     ) {
       setError(
         'Please enter a reason for your unavailability.'
+      )
+      return
+    }
+
+    if (checkDateSubmissionLimit(availability === 'available' ? exercise : [])) {
+      setError(
+        availability === 'available'
+          ? 'You already submitted one of these exercises for this date. Choose another exercise.'
+          : 'You already submitted your availability for this date. Choose another date.'
       )
       return
     }
@@ -876,15 +938,22 @@ function FlightAvailability() {
                     ? multiEngineExercises
                     : singleEngineExercises
                   ).map((item) => (
+                      (() => {
+                        const queueEntry = getQueueEntry(item)
+
+                        return (
                       <button
                         type="button"
                         key={item}
+                        disabled={Boolean(queueEntry)}
                         className={`exercise-option ${
-                          exercise.includes(item)
+                          exercise.includes(item) || queueEntry
                             ? 'selected'
                             : ''
                         }`}
                         onClick={() => {
+                          if (queueEntry) return
+
                           setExercise((selectedExercises) =>
                             selectedExercises.includes(item)
                               ? selectedExercises.filter(
@@ -903,9 +972,16 @@ function FlightAvailability() {
 
                         <span>
                           {item}
+                          {queueEntry && (
+                            <small className="queue-position">
+                              Queue position: {queueEntry.position}
+                            </small>
+                          )}
                         </span>
 
                       </button>
+                        )
+                      })()
                     )
                   )}
 
