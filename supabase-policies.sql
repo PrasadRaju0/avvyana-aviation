@@ -28,16 +28,26 @@ create policy "student_accounts_update_anon"
 
 drop policy if exists "flight_submissions_select_anon" on public.flight_submissions;
 drop policy if exists "flight_submissions_insert_anon" on public.flight_submissions;
+drop policy if exists "flight_submissions_delete_anon" on public.flight_submissions;
 create policy "flight_submissions_select_anon"
   on public.flight_submissions for select to anon, authenticated
   using (true);
 create policy "flight_submissions_insert_anon"
   on public.flight_submissions for insert to anon, authenticated
   with check (true);
+create policy "flight_submissions_delete_anon"
+  on public.flight_submissions for delete to anon, authenticated
+  using (true);
+
+drop policy if exists "student_accounts_delete_anon" on public.student_accounts;
+create policy "student_accounts_delete_anon"
+  on public.student_accounts for delete to anon, authenticated
+  using (true);
 
 drop policy if exists "leave_requests_select_anon" on public.leave_requests;
 drop policy if exists "leave_requests_insert_anon" on public.leave_requests;
 drop policy if exists "leave_requests_update_anon" on public.leave_requests;
+drop policy if exists "leave_requests_delete_anon" on public.leave_requests;
 create policy "leave_requests_select_anon"
   on public.leave_requests for select to anon, authenticated
   using (true);
@@ -48,3 +58,6 @@ create policy "leave_requests_update_anon"
   on public.leave_requests for update to anon, authenticated
   using (true)
   with check (true);
+create policy "leave_requests_delete_anon"
+  on public.leave_requests for delete to anon, authenticated
+  using (true);

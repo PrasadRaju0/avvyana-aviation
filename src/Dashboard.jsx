@@ -39,7 +39,10 @@ function Dashboard() {
   const [searchSplNumber, setSearchSplNumber] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedExercise, setSelectedExercise] = useState('')
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState('all')
+  const [showLeaveTable, setShowLeaveTable] = useState(false)
   const [databaseSubmissions, setDatabaseSubmissions] = useState(null)
+  const [databaseAccounts, setDatabaseAccounts] = useState(null)
   const [databaseError, setDatabaseError] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
@@ -64,7 +67,7 @@ function Dashboard() {
   const legacySubmission = JSON.parse(
     localStorage.getItem('flightSubmission') || 'null'
   )
-  const studentAccounts = JSON.parse(
+  const localStudentAccounts = JSON.parse(
     localStorage.getItem('studentAccounts') || '[]'
   )
   const submissions = savedSubmissions.length > 0
@@ -77,10 +80,16 @@ function Dashboard() {
     let isMounted = true
 
     const loadSubmissions = async () => {
-      const { data, error } = await supabase
-        .from('flight_submissions')
-        .select('*')
-        .order('submitted_at', { ascending: false })
+      const [submissionResult, accountResult] = await Promise.all([
+        supabase
+          .from('flight_submissions')
+          .select('*')
+          .order('submitted_at', { ascending: false }),
+        supabase
+          .from('student_accounts')
+          .select('spl_number, full_name, email, batch_number'),
+      ])
+      const { data, error } = submissionResult
 
       if (!isMounted) return
 
@@ -103,6 +112,15 @@ function Dashboard() {
         totalFlyingHours: item.total_flying_hours,
         submittedAt: item.submitted_at,
       })))
+
+      if (!accountResult.error) {
+        setDatabaseAccounts(accountResult.data.map((item) => ({
+          splNumber: item.spl_number,
+          fullName: item.full_name,
+          email: item.email,
+          batchNumber: item.batch_number,
+        })))
+      }
     }
 
     loadSubmissions()
@@ -110,6 +128,7 @@ function Dashboard() {
   }, [])
 
   const displayedSubmissions = databaseSubmissions ?? submissions
+  const studentAccounts = databaseAccounts ?? localStudentAccounts
 
   const exerciseOptions = Array.from(new Set([
     ...allExercises,
@@ -122,27 +141,52 @@ function Dashboard() {
   ])).sort((first, second) => first.localeCompare(second))
 
   // Delete a single submission
-  const handleDeleteSubmission = (indexToDelete) => {
-    if (window.confirm('Are you sure you want to delete this submission? This action cannot be undone.')) {
-      const updatedSubmissions = savedSubmissions.filter((_, index) => index !== indexToDelete)
-      localStorage.setItem('flightSubmissions', JSON.stringify(updatedSubmissions))
-      setSuccessMessage('✓ Submission deleted successfully')
-      setTimeout(() => setSuccessMessage(''), 3000)
-      window.location.reload()
+  const handleDeleteSubmission = async (submission) => {
+    if (!window.confirm('Are you sure you want to delete this submission? This action cannot be undone.')) return
+
+    if (submission.id) {
+      const { error } = await supabase
+        .from('flight_submissions')
+        .delete()
+        .eq('id', submission.id)
+
+      if (error) {
+        setDatabaseError(`Unable to delete submission: ${error.message}`)
+        return
+      }
     }
+
+    const updatedSubmissions = savedSubmissions.filter((item) => item !== submission)
+    localStorage.setItem('flightSubmissions', JSON.stringify(updatedSubmissions))
+    setDatabaseSubmissions((current) => current
+      ? current.filter((item) => item.id !== submission.id)
+      : current)
+    setSuccessMessage('Submission deleted successfully')
+    setTimeout(() => setSuccessMessage(''), 3000)
   }
 
   // Delete all data
-  const handleDeleteAllData = () => {
-    if (window.confirm('⚠️ WARNING: This will delete ALL student submissions and accounts. This cannot be undone. Are you sure?')) {
-      if (window.confirm('Are you absolutely certain? This will erase all data.')) {
+  const handleDeleteAllData = async () => {
+    if (window.confirm('WARNING: This will delete all student submissions, accounts, and leave requests. This cannot be undone. Are you sure?')) {
+      if (window.confirm('Are you absolutely certain? This will erase all database data?')) {
+        const results = await Promise.all([
+          supabase.from('flight_submissions').delete().not('id', 'is', null),
+          supabase.from('student_accounts').delete().not('id', 'is', null),
+          supabase.from('leave_requests').delete().not('id', 'is', null),
+        ])
+        const databaseDeleteError = results.find((result) => result.error)?.error
+        if (databaseDeleteError) {
+          setDatabaseError(`Unable to delete all database data: ${databaseDeleteError.message}`)
+          return
+        }
+
         localStorage.removeItem('flightSubmissions')
         localStorage.removeItem('flightSubmission')
         localStorage.removeItem('studentAccounts')
         localStorage.removeItem('leaveRequests')
         localStorage.removeItem('lastSubmissionDate')
         setShowDeleteConfirm(false)
-        setSuccessMessage('✓ All data has been cleared successfully')
+        setSuccessMessage('All database data has been cleared successfully')
         setTimeout(() => {
           window.location.reload()
         }, 2000)
@@ -151,12 +195,23 @@ function Dashboard() {
   }
 
   // Clear all submissions only (keep student accounts)
-  const handleClearSubmissions = () => {
-    if (window.confirm('Delete all flight submissions? Student accounts will remain. This cannot be undone.')) {
+  const handleClearSubmissions = async () => {
+    if (window.confirm('Delete all flight submissions from the database? Student accounts will remain. This cannot be undone.')) {
+      const { error } = await supabase
+        .from('flight_submissions')
+        .delete()
+        .not('id', 'is', null)
+
+      if (error) {
+        setDatabaseError(`Unable to clear submissions: ${error.message}`)
+        return
+      }
+
       localStorage.removeItem('flightSubmissions')
       localStorage.removeItem('flightSubmission')
       localStorage.removeItem('lastSubmissionDate')
-      setSuccessMessage('✓ All submissions have been cleared successfully')
+      setDatabaseSubmissions([])
+      setSuccessMessage('All submissions have been cleared successfully')
       setTimeout(() => {
         window.location.reload()
       }, 2000)
@@ -340,6 +395,14 @@ function Dashboard() {
     })
     : []
 
+  const searchedStudentAccounts = searchSplNumber.trim()
+    ? studentAccounts.filter((account) => {
+      const searchValue = searchSplNumber.trim().toLowerCase()
+      return account.splNumber.toLowerCase().includes(searchValue) ||
+        (account.fullName || '').toLowerCase().includes(searchValue)
+    })
+    : []
+
   const filteredLeaveRequests = searchSplNumber.trim()
     ? leaveRequests.filter((request) => {
       const searchValue = searchSplNumber.trim().toLowerCase()
@@ -369,7 +432,9 @@ function Dashboard() {
     return diffDays
   }
 
-  const searchedStudent = searchedStudentSubmissions[0] || filteredLeaveRequests[0]
+  const searchedStudent = searchedStudentSubmissions[0] ||
+    filteredLeaveRequests[0] ||
+    searchedStudentAccounts[0]
   const searchedLeaveDays = searchedStudent
     ? getTotalLeaveDays(searchedStudent.studentId)
     : 0
@@ -389,6 +454,36 @@ function Dashboard() {
   const leaveSubmissions = filteredSubmissions.filter(
     (submission) => ['seventh-day', 'not-available'].includes(submission.availability)
   )
+
+  const leaveSummaryRows = [
+    ...leaveSubmissions.map((submission) => ({
+      id: `submission-${submission.studentId}-${submission.submittedAt}`,
+      category: submission.availability === 'seventh-day' ? '7th day' : 'Not available',
+      studentId: submission.studentId,
+      studentName: getStudentName(submission) || submission.studentId,
+      date: submission.flightDate || submission.submittedAt,
+      reason: submission.unavailabilityReason || (submission.availability === 'seventh-day' ? '7th day' : '-'),
+      status: submission.availability === 'seventh-day' ? '7th day' : 'Not available',
+    })),
+    ...filteredLeaveRequests.map((request, index) => ({
+      id: `request-${request.studentId}-${request.requestedAt}-${index}`,
+      category: 'Leave student',
+      studentId: request.studentId,
+      studentName: request.studentName || request.studentId,
+      date: request.fromDate,
+      reason: request.reason || '-',
+      status: request.status,
+      request,
+    })),
+  ]
+    .filter((row) => leaveTypeFilter === 'all' || row.category === leaveTypeFilter)
+    .map((row) => ({
+      ...row,
+      totalLeaveDays: getTotalLeaveDays(row.studentId),
+      totalFlyingHours: displayedSubmissions
+        .filter((submission) => submission.studentId === row.studentId)
+        .reduce((total, submission) => total + Number(submission.totalFlyingHours || 0), 0),
+    }))
 
   return (
     <main className="admin-dashboard">
@@ -523,23 +618,6 @@ function Dashboard() {
                 CLEAR
               </button>
             )}
-
-            <div className="dashboard-filter-field">
-              <label className="dashboard-exercise-label" htmlFor="admin-exercise-filter">EXERCISE</label>
-              <select
-                id="admin-exercise-filter"
-                className="dashboard-exercise-select"
-                value={selectedExercise}
-                onChange={(event) => setSelectedExercise(event.target.value)}
-              >
-                <option value="">ALL EXERCISES</option>
-                {exerciseOptions.map((exercise) => (
-                  <option key={exercise} value={exercise}>
-                    {exercise}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
         </div>
 
@@ -670,6 +748,22 @@ function Dashboard() {
                             onChange={(e) => setSelectedDate(e.target.value)}
                           />
                         </label>
+                        <label className="available-date-filter" htmlFor="admin-exercise-filter">
+                          EXERCISE
+                          <select
+                            id="admin-exercise-filter"
+                            className="dashboard-exercise-select"
+                            value={selectedExercise}
+                            onChange={(event) => setSelectedExercise(event.target.value)}
+                          >
+                            <option value="">ALL EXERCISES</option>
+                            {exerciseOptions.map((exercise) => (
+                              <option key={exercise} value={exercise}>
+                                {exercise}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                       <strong>{availableSubmissions.length} STUDENTS</strong>
           </div>
@@ -684,7 +778,6 @@ function Dashboard() {
                   <th>Waiting days</th>
                   <th>Total hours</th>
                   <th>Status</th>
-                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -697,20 +790,11 @@ function Dashboard() {
                       <td>{getWaitingDuration(submission.flightDate || submission.submittedAt)}</td>
                       <td>{submission.totalFlyingHours} hrs</td>
                       <td><span className="availability-status available">Available</span></td>
-                      <td>
-                        <button 
-                          className="btn-delete-row"
-                          onClick={() => handleDeleteSubmission(savedSubmissions.findIndex(s => s === submission))}
-                          title="Delete this submission"
-                        >
-                          Delete
-                        </button>
-                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6" className="empty-submissions">
+                    <td colSpan="5" className="empty-submissions">
                       {searchSplNumber.trim() || selectedDate
                         ? 'No available student found for these filters.'
                         : 'No available students yet.'}
@@ -724,11 +808,35 @@ function Dashboard() {
 
         <section className="leave-section">
           <div className="leave-section-heading">
-            <h2>7th Day and Not Available Students</h2>
-            <strong>{leaveSubmissions.length} RECORDS</strong>
+            <div className="available-heading-content">
+              <h2>Leave and Unavailable Students</h2>
+              <div className="leave-table-controls">
+                <label className="leave-type-filter" htmlFor="leave-type-table-filter">
+                  FILTER
+                  <select
+                    id="leave-type-table-filter"
+                    value={leaveTypeFilter}
+                    onChange={(event) => setLeaveTypeFilter(event.target.value)}
+                  >
+                    <option value="all">ALL STUDENTS</option>
+                    <option value="7th day">7TH DAY</option>
+                    <option value="Not available">NOT AVAILABLE</option>
+                    <option value="Leave student">LEAVE STUDENTS</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="leave-table-toggle"
+                  onClick={() => setShowLeaveTable((isVisible) => !isVisible)}
+                >
+                  {showLeaveTable ? 'HIDE TABLE' : 'SHOW TABLE'}
+                </button>
+              </div>
+            </div>
+            <strong>{leaveSummaryRows.length} RECORDS</strong>
           </div>
 
-        <div className="submission-table-wrapper">
+        {showLeaveTable && <div className="submission-table-wrapper">
           <table className="submission-table">
             <thead>
               <tr>
@@ -739,44 +847,34 @@ function Dashboard() {
                 <th>7th Day</th>
                 <th>Not Available</th>
                 <th>Reason</th>
-                <th>Action</th>
-                        <th>Total leaves</th>
+                <th>Total leaves</th>
               </tr>
             </thead>
             <tbody>
-              {leaveSubmissions.length > 0 ? (
-                leaveSubmissions.map((submission, index) => (
-                  <tr key={`${submission.studentId}-${submission.submittedAt}-${index}`}>
-                    <td>{formatSubmissionDate(submission.flightDate || submission.submittedAt)}</td>
-                    <td><strong>{getStudentDetails(submission)}</strong></td>
-                    <td>{submission.exercise}</td>
+              {leaveSummaryRows.length > 0 ? (
+                leaveSummaryRows.map((submission) => (
+                  <tr key={submission.id}>
+                    <td>{formatSubmissionDate(submission.date)}</td>
+                    <td><strong>{submission.studentName}</strong></td>
+                    <td>{submission.category}</td>
                     <td>{submission.totalFlyingHours} hrs</td>
                     <td>
-                      {submission.availability === 'seventh-day' ? (
+                      {submission.category === '7th day' ? (
                         <span className="availability-status seventh-day">Yes</span>
                       ) : '-'}
                     </td>
                     <td>
-                      {submission.availability === 'not-available' ? (
+                      {submission.category === 'Not available' ? (
                         <span className="availability-status not-available">Yes</span>
                       ) : '-'}
                     </td>
-                    <td>{submission.unavailabilityReason || (submission.availability === 'seventh-day' ? '7th day' : '-')}</td>
-                    <td>
-                      <button 
-                        className="btn-delete-row"
-                        onClick={() => handleDeleteSubmission(savedSubmissions.findIndex(s => s === submission))}
-                        title="Delete this submission"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                    <td><strong>{getTotalLeaveDays(submission.studentId)}</strong></td>
+                    <td>{submission.reason}</td>
+                    <td><strong>{submission.totalLeaveDays}</strong></td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                    <td colSpan="9" className="empty-submissions">
+                    <td colSpan="8" className="empty-submissions">
                     {searchSplNumber.trim() || selectedDate
                       ? 'No leave record found for these filters.'
                       : 'No leave records yet.'}
@@ -785,7 +883,7 @@ function Dashboard() {
               )}
             </tbody>
           </table>
-        </div>
+        </div>}
         </section>
       </section>
     </main>
