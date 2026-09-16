@@ -485,6 +485,121 @@ function Dashboard() {
         .reduce((total, submission) => total + Number(submission.totalFlyingHours || 0), 0),
     }))
 
+  const handleDeleteStudentFromDatabase = async (studentIdToDelete) => {
+    const normalizedId = (studentIdToDelete || '').trim()
+    if (!normalizedId) return
+
+    const confirmed = window.confirm(
+      `Delete ${normalizedId} from the main database? This will remove the student account, flight records, and leave records.`
+    )
+    if (!confirmed) return
+
+    const results = await Promise.all([
+      supabase.from('leave_requests').delete().eq('student_id', normalizedId).select('id'),
+      supabase.from('flight_submissions').delete().eq('student_id', normalizedId).select('id'),
+      supabase.from('student_accounts').delete().eq('spl_number', normalizedId).select('id'),
+    ])
+
+    const databaseDeleteError = results.find((result) => result.error)?.error
+    if (databaseDeleteError) {
+      setDatabaseError(`Unable to delete student ${normalizedId}: ${databaseDeleteError.message}`)
+      return
+    }
+
+    if (results[2].data?.length === 0) {
+      setDatabaseError(
+        `No account was deleted for ${normalizedId}. Check that the admin is connected to the correct Supabase project and that the student_accounts DELETE policy is enabled.`
+      )
+      return
+    }
+
+    const localSubmissions = JSON.parse(localStorage.getItem('flightSubmissions') || '[]')
+    localStorage.setItem('flightSubmissions', JSON.stringify(
+      localSubmissions.filter((item) => item.studentId?.trim() !== normalizedId)
+    ))
+
+    const localAccounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
+    localStorage.setItem('studentAccounts', JSON.stringify(
+      localAccounts.filter((item) => item.splNumber?.trim() !== normalizedId)
+    ))
+
+    const localLeaves = JSON.parse(localStorage.getItem('leaveRequests') || '[]')
+    localStorage.setItem('leaveRequests', JSON.stringify(
+      localLeaves.filter((item) => item.studentId?.trim() !== normalizedId)
+    ))
+
+    const legacySubmission = JSON.parse(localStorage.getItem('flightSubmission') || 'null')
+    if (legacySubmission?.studentId?.trim() === normalizedId) {
+      localStorage.removeItem('flightSubmission')
+    }
+
+    if (localStorage.getItem('studentId')?.trim() === normalizedId) {
+      localStorage.removeItem('studentLoggedIn')
+      localStorage.removeItem('studentId')
+      localStorage.removeItem('studentName')
+      localStorage.removeItem('studentBatchNumber')
+      localStorage.removeItem('selectedFlightDate')
+    }
+
+    setDatabaseSubmissions((current) => current
+      ? current.filter((item) => item.studentId !== normalizedId)
+      : current)
+    setDatabaseAccounts((current) => current
+      ? current.filter((item) => item.splNumber !== normalizedId)
+      : current)
+    setLeaveRequests(localLeaves.filter((item) => item.studentId !== normalizedId))
+    setSuccessMessage(`${normalizedId} deleted from the main database.`)
+    setTimeout(() => setSuccessMessage(''), 3000)
+  }
+
+  const searchResultRows = searchSplNumber.trim()
+    ? (() => {
+        const uniqueRows = new Map()
+        const searchValue = searchSplNumber.trim().toLowerCase()
+
+        Array.from(new Set([
+          ...displayedSubmissions.map((submission) => submission.studentId),
+          ...studentAccounts.map((account) => account.splNumber),
+        ]))
+          .filter((studentId) => studentId && studentId.toString().trim())
+          .forEach((studentId) => {
+            const studentAccount = studentAccounts.find((item) => item.splNumber === studentId)
+            const studentName = studentAccount?.fullName || 'Unknown student'
+            const normalizedKey = (studentId || '').trim().toLowerCase()
+
+            if (!uniqueRows.has(normalizedKey)) {
+              const notAvailableCount = displayedSubmissions.filter(
+                (submission) => submission.studentId === studentId && submission.availability === 'not-available'
+              ).length
+
+              const leaveTaken = leaveRequests
+                .filter((request) => request.studentId === studentId)
+                .reduce((total, request) => {
+                  const days = Number.parseInt(getLeaveDuration(request.fromDate, request.toDate), 10)
+                  return total + (Number.isNaN(days) ? 0 : days)
+                }, 0)
+
+              uniqueRows.set(normalizedKey, {
+                studentId,
+                studentName,
+                notAvailableCount,
+                leaveTaken,
+                totalLeaves: leaveTaken + notAvailableCount,
+                totalFlyingHours: displayedSubmissions
+                  .filter((submission) => submission.studentId === studentId)
+                  .reduce((total, submission) => total + Number(submission.totalFlyingHours || 0), 0),
+              })
+            }
+          })
+
+        return Array.from(uniqueRows.values()).filter((row) => {
+          const studentIdText = (row.studentId || '').toLowerCase()
+          const studentNameText = (row.studentName || '').toLowerCase()
+          return studentIdText.includes(searchValue) || studentNameText.includes(searchValue)
+        })
+      })()
+    : []
+
   return (
     <main className="admin-dashboard">
       <header className="dashboard-header">
@@ -621,28 +736,46 @@ function Dashboard() {
           </div>
         </div>
 
-        {searchSplNumber.trim() && searchedStudent && (
-          <div className="student-summary">
-            <div>
-              <span>STUDENT</span>
-              <strong>{getStudentDetails(searchedStudent)}</strong>
-            </div>
-            <div>
-              <span>DAYS IN PROGRAM</span>
-              <strong>{searchedDaysInProgram} days</strong>
-            </div>
-            <div>
-              <span>LEAVE DAYS</span>
-              <strong>{searchedLeaveDays}</strong>
-            </div>
-            <div>
-              <span>TOTAL FLYING HOURS</span>
-              <strong>{searchedFlyingHours} hrs</strong>
-            </div>
+        {searchSplNumber.trim() && searchResultRows.length > 0 && (
+          <div className="search-result-table-wrapper">
+            <table className="search-result-table">
+              <thead>
+                <tr>
+                  <th>SPL Number</th>
+                  <th>Name</th>
+                  <th>Not available</th>
+                  <th>Leave taken</th>
+                  <th>Total leaves</th>
+                  <th>Total hours</th>
+                  <th>Delete</th>
+                </tr>
+              </thead>
+              <tbody>
+                {searchResultRows.map((row) => (
+                  <tr key={row.studentId}>
+                    <td><strong>{row.studentId}</strong></td>
+                    <td>{row.studentName}</td>
+                    <td>{row.notAvailableCount}</td>
+                    <td>{row.leaveTaken}</td>
+                    <td><strong>{row.totalLeaves}</strong></td>
+                    <td>{row.totalFlyingHours} hrs</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-danger btn-delete-row"
+                        onClick={() => handleDeleteStudentFromDatabase(row.studentId)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {showLeaveRequests && <section className="leave-section leave-requests-panel">
+        {!searchSplNumber.trim() && showLeaveRequests && <section className="leave-section leave-requests-panel">
                     <div className="leave-section-heading">
                       <div>
                         <h2>Leave Requests</h2>
@@ -734,7 +867,7 @@ function Dashboard() {
                     </div>
                   </section>}
 
-                  <section className="leave-section">
+                  {!searchSplNumber.trim() && <section className="leave-section">
           <div className="leave-section-heading">
                       <div className="available-heading-content">
                         <h2>Available for Flying Students</h2>
@@ -804,9 +937,9 @@ function Dashboard() {
               </tbody>
             </table>
           </div>
-        </section>
+        </section>}
 
-        <section className="leave-section">
+        {!searchSplNumber.trim() && <section className="leave-section">
           <div className="leave-section-heading">
             <div className="available-heading-content">
               <h2>Leave and Unavailable Students</h2>
@@ -884,7 +1017,7 @@ function Dashboard() {
             </tbody>
           </table>
         </div>}
-        </section>
+        </section>}
       </section>
     </main>
   )
