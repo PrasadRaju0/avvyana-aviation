@@ -152,7 +152,14 @@ function FlightAvailability() {
     }
 
     loadQueue()
-    return () => { isMounted = false }
+    const queueRefresh = window.setInterval(loadQueue, 5000)
+    window.addEventListener('focus', loadQueue)
+
+    return () => {
+      isMounted = false
+      window.clearInterval(queueRefresh)
+      window.removeEventListener('focus', loadQueue)
+    }
   }, [studentId])
 
   const getQueueEntry = (exerciseName) => queuedExercises.find(
@@ -974,7 +981,9 @@ function FlightAvailability() {
                           {item}
                           {queueEntry && (
                             <small className="queue-position">
-                              Queue position: {queueEntry.position}
+                              {queueEntry.position === 1
+                                ? 'Next you..Be Ready!!!!'
+                                : `Queue position: ${queueEntry.position}`}
                             </small>
                           )}
                         </span>
