@@ -4,8 +4,13 @@ import FlightAvailability from './FlightAvailability'
 import LeaveRequest from './LeaveRequest'
 import Dashboard from './Dashboard'
 import AdminLeaveRequests from './AdminLeaveRequests'
+import QueueMembersPage from './QueueMembersPage'
 import { supabase } from './lib/supabase'
 import './App.css'
+
+// ============================
+// STUDENT PORTAL PAGES
+// ============================
 
 function LoginPage() {
   const navigate = useNavigate()
@@ -155,18 +160,6 @@ function LoginPage() {
               FORGOT PASSWORD?
             </button>
           </div>
-
-          {/* <div className="demo-info">
-            <div>
-              <span>Demo SPL Number</span>
-              <strong>AVV-0001</strong>
-            </div>
-
-            <div>
-              <span>Demo Password</span>
-              <strong>123456</strong>
-            </div>
-          </div> */}
 
           <div className="support">
             <span>Need assistance?</span>
@@ -359,6 +352,10 @@ function ForgotPasswordPage() {
   )
 }
 
+// ============================
+// SHARED STUDENT FORM
+// ============================
+
 function StudentAccountForm({ title, submitLabel, form, setForm, error, onSubmit, onBack, reset = false }) {
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
   return (
@@ -380,6 +377,10 @@ function StudentAccountForm({ title, submitLabel, form, setForm, error, onSubmit
     </div></main>
   )
 }
+
+// ============================
+// ADMIN PORTAL PAGES
+// ============================
 
 function AdminPortalHome() {
   const navigate = useNavigate()
@@ -550,6 +551,10 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
   )
 }
 
+// ============================
+// APP ROUTING
+// ============================
+
 function App() {
   const [isLoading, setIsLoading] = useState(true)
 
@@ -586,6 +591,7 @@ function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/cadets-availability" element={<Dashboard />} />
+      <Route path="/admin/queue-members" element={<QueueMembersPage />} />
       <Route path="/admin/leave-requests" element={<AdminLeaveRequests />} />
       <Route path="/admin/signup" element={<AdminSignupPage />} />
       <Route path="/admin/forgot-password" element={<AdminForgotPasswordPage />} />

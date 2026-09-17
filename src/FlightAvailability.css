@@ -88,11 +88,18 @@
 /* BRAND */
 
 .academy-brand {
-  display: flex;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
-  align-items: baseline;
-
-  gap: 9px;
+.academy-brand::before {
+  content: "";
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  background: url('/avyanna-mark.svg') center / contain no-repeat;
+  display: inline-block;
 }
 
 .academy-brand-button {
@@ -116,21 +123,18 @@
 }
 
 .brand-small {
-  font-size: 16px;
-
+  font-size: 12px;
   font-weight: 800;
-
-  letter-spacing: 2px;
+  letter-spacing: 1px;
+  line-height: 1;
 }
 
 .brand-main {
-  font-size: 10px;
-
+  font-size: 7px;
   font-weight: 600;
-
-  letter-spacing: 1.8px;
-
-  opacity: 0.7;
+  letter-spacing: 1.2px;
+  opacity: 0.72;
+  line-height: 1;
 }
 
 /* STUDENT */

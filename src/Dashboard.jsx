@@ -247,10 +247,10 @@ function Dashboard() {
     setTimeout(() => setSuccessMessage(''), 3000)
   }
 
-  // Delete all data
+  // Delete all database data only
   const handleDeleteAllData = async () => {
-    if (window.confirm('WARNING: This will delete all student submissions, accounts, and leave requests. This cannot be undone. Are you sure?')) {
-      if (window.confirm('Are you absolutely certain? This will erase all database data?')) {
+    if (window.confirm('WARNING: This will delete all rows from the database tables for flight submissions, student accounts, and leave requests. This cannot be undone. Are you sure?')) {
+      if (window.confirm('Are you absolutely certain? This will erase all database data only.')) {
         const results = await Promise.all([
           supabase.from('flight_submissions').delete().not('id', 'is', null),
           supabase.from('student_accounts').delete().not('id', 'is', null),
@@ -766,16 +766,12 @@ function Dashboard() {
             type="button"
             className="btn-queue-members"
             onClick={() => {
-              setShowQueueMembers((isVisible) => {
-                const nextVisibility = !isVisible
-                if (nextVisibility) {
-                  window.setTimeout(() => queueSectionRef.current?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start',
-                  }), 0)
-                }
-                return nextVisibility
-              })
+              const queueState = JSON.stringify(queuedSubmissions)
+              sessionStorage.setItem('queueMembersData', queueState)
+              const newWindow = window.open('/admin/queue-members', '_blank', 'noopener,noreferrer')
+              if (newWindow) {
+                newWindow.sessionStorage.setItem('queueMembersData', queueState)
+              }
             }}
             title="View students currently waiting in the queue"
           >
@@ -810,9 +806,9 @@ function Dashboard() {
           <button 
             className="btn-danger"
             onClick={handleDeleteAllData}
-            title="Delete all data including student accounts"
+            title="Delete all records from the database"
           >
-            Delete all data
+            Delete all DB data
           </button>
         </div>
 
