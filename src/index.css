@@ -16,3 +16,7 @@ body {
     "Segoe UI",
     sans-serif;
 }
+
+body.app-is-loading {
+  overflow: hidden;
+}

@@ -12,6 +12,128 @@
   background-color: #173c48;
 }
 
+.startup-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  overflow: hidden;
+  background: rgba(225, 233, 237, 0.96);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  color: #172554;
+  animation: loaderFadeIn 500ms ease both;
+}
+
+.aaa-badge {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow:
+    0 10px 30px rgba(15, 45, 75, 0.15),
+    0 2px 8px rgba(15, 45, 75, 0.08);
+}
+
+.aaa-text {
+  position: relative;
+  z-index: 4;
+  display: block;
+  width: 72px;
+  height: 40px;
+  transform: translateY(4px);
+  pointer-events: none;
+}
+
+.aaa-plane-orbit {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  animation: aaaPlaneOrbit 1.8s linear infinite;
+}
+
+.aaa-plane {
+  position: absolute;
+  top: 5px;
+  left: 40px;
+  z-index: 1;
+  padding: 2px 3px 3px 2px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #172554;
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(-18deg);
+}
+
+.aaa-dots {
+  position: absolute;
+  z-index: 2;
+  top: 11px;
+  left: 11px;
+  width: 78px;
+  height: 78px;
+  border: 2px dotted #172554;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  transform: rotate(-22deg);
+  animation: aaaDotsOrbit 1.8s linear infinite;
+}
+
+.loader-caption {
+  color: #53687a;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.loader-progress {
+  width: 110px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(26, 36, 69, 0.12);
+}
+
+.loader-progress span {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: #1a2445;
+  animation: loaderProgress 1.8s ease-in-out infinite;
+}
+
+@keyframes loaderFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes aaaPlaneOrbit {
+  from { transform: rotate(0deg); }
+  50% { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes aaaDotsOrbit {
+  from { transform: rotate(-22deg); }
+  50% { transform: rotate(-22deg); }
+  to { transform: rotate(338deg); }
+}
+
+@keyframes loaderProgress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(250%); }
+}
+
 .login-marquee {
   position: absolute;
   top: 0;

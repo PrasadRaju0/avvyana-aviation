@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Route, Routes, useNavigate } from 'react-router-dom'
 import FlightAvailability from './FlightAvailability'
 import LeaveRequest from './LeaveRequest'
@@ -551,6 +551,34 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
 }
 
 function App() {
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    document.body.classList.add('app-is-loading')
+    const timeoutId = window.setTimeout(() => {
+      document.body.classList.remove('app-is-loading')
+      setIsLoading(false)
+    }, 1800)
+    return () => {
+      window.clearTimeout(timeoutId)
+      document.body.classList.remove('app-is-loading')
+    }
+  }, [])
+
+  if (isLoading) {
+    return (
+      <main className="startup-loader" aria-label="Loading Avyanna Aviation Academy">
+        <div className="aaa-badge" aria-hidden="true">
+          <div className="aaa-dots"></div>
+          <img className="aaa-text" src="/avyanna-mark.svg" alt="Avyanna Aviation" />
+          <span className="aaa-plane-orbit">
+            <span className="aaa-plane">✈</span>
+          </span>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <Routes>
       <Route path="/" element={<LoginPage />} />
