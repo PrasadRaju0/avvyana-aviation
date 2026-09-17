@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import './Dashboard.css'
@@ -52,6 +52,10 @@ function Dashboard() {
   const [leaveAccessError, setLeaveAccessError] = useState('')
   const [queueClock, setQueueClock] = useState(() => Date.now())
   const [queueActionId, setQueueActionId] = useState(null)
+  const [showQueueMembers, setShowQueueMembers] = useState(false)
+  const [showLeaveSummarySection, setShowLeaveSummarySection] = useState(false)
+  const queueSectionRef = useRef(null)
+  const leaveSummarySectionRef = useRef(null)
   const [leaveRequests, setLeaveRequests] = useState(() => JSON.parse(
     localStorage.getItem('leaveRequests') || '[]'
   ))
@@ -443,7 +447,10 @@ function Dashboard() {
     const startedAt = new Date(submission.queueStartedAt).getTime()
     if (Number.isNaN(startedAt)) return '-'
 
-    const waitingDays = Math.floor(Math.max(0, queueClock - startedAt) / (1000 * 60 * 60 * 24))
+    const waitingDays = Math.max(
+      1,
+      Math.ceil(Math.max(0, queueClock - startedAt) / (1000 * 60 * 60 * 24))
+    )
     return `${waitingDays} day${waitingDays === 1 ? '' : 's'}`
   }
 
@@ -533,9 +540,7 @@ function Dashboard() {
   )
   const searchedDaysInProgram = getDaysInProgram(searchedStudentSubmissions)
 
-  const availableSubmissions = filteredSubmissions
-    .filter((submission) => submission.availability === 'available')
-    .sort((first, second) => {
+  const sortQueueByExerciseAndAge = (first, second) => {
       const firstExercise = (first.exercise || '').split(',')[0].trim().toLowerCase()
       const secondExercise = (second.exercise || '').split(',')[0].trim().toLowerCase()
       const exerciseOrder = firstExercise.localeCompare(secondExercise)
@@ -544,7 +549,16 @@ function Dashboard() {
       const firstSubmittedTime = new Date(first.submittedAt || first.flightDate || 0).getTime()
       const secondSubmittedTime = new Date(second.submittedAt || second.flightDate || 0).getTime()
       return firstSubmittedTime - secondSubmittedTime
-    })
+  }
+
+  const queuedSubmissions = filteredSubmissions
+    .filter((submission) => submission.availability === 'available' && submission.queueStatus === 'queued')
+    .sort(sortQueueByExerciseAndAge)
+
+  const availableSubmissions = filteredSubmissions
+    .filter((submission) => submission.availability === 'available'
+      && !['queued', 'completed'].includes(submission.queueStatus))
+    .sort(sortQueueByExerciseAndAge)
   const leaveSubmissions = filteredSubmissions.filter(
     (submission) => ['seventh-day', 'not-available'].includes(submission.availability)
   )
@@ -748,19 +762,57 @@ function Dashboard() {
         </div>
 
         <div className="dashboard-actions-bar">
+          <button
+            type="button"
+            className="btn-queue-members"
+            onClick={() => {
+              setShowQueueMembers((isVisible) => {
+                const nextVisibility = !isVisible
+                if (nextVisibility) {
+                  window.setTimeout(() => queueSectionRef.current?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                  }), 0)
+                }
+                return nextVisibility
+              })
+            }}
+            title="View students currently waiting in the queue"
+          >
+            {showQueueMembers ? 'HIDE QUEUE MEMBERS' : 'QUEUE MEMBERS'}{queuedSubmissions.length > 0 ? ` (${queuedSubmissions.length})` : ''}
+          </button>
+          <button
+            type="button"
+            className="btn-leave-summary"
+            onClick={() => {
+              setShowLeaveSummarySection((isVisible) => {
+                const nextVisibility = !isVisible
+                if (nextVisibility) {
+                  window.setTimeout(() => leaveSummarySectionRef.current?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start',
+                  }), 0)
+                }
+                return nextVisibility
+              })
+            }}
+            title="View leave and unavailable students"
+          >
+            {showLeaveSummarySection ? 'HIDE LEAVE SUMMARY' : 'LEAVE & UNAVAILABLE'}
+          </button>
           <button 
             className="btn-clear-submissions"
             onClick={handleClearSubmissions}
             title="Delete all flight submissions (keeps student accounts)"
           >
-            🗑️ Clear All Submissions
+            Clear submissions
           </button>
           <button 
             className="btn-danger"
             onClick={handleDeleteAllData}
             title="Delete all data including student accounts"
           >
-            ⚠️ Delete All Data
+            Delete all data
           </button>
         </div>
 
@@ -961,7 +1013,58 @@ function Dashboard() {
                     </div>
                   </section>}
 
-                  {!searchSplNumber.trim() && <section className="leave-section">
+                  {!searchSplNumber.trim() && queuedSubmissions.length > 0 && showQueueMembers && <section ref={queueSectionRef} className="leave-section queue-section">
+          <div className="leave-section-heading">
+            <div>
+              <span className="dashboard-label">FIRST COME, FIRST SERVED</span>
+              <h2>Active Queue</h2>
+            </div>
+            <strong>{queuedSubmissions.length} WAITING</strong>
+                  <button
+                    type="button"
+                    className="queue-members-toggle"
+                    onClick={() => setShowQueueMembers((isVisible) => !isVisible)}
+                    aria-expanded={showQueueMembers}
+                  >
+                    {showQueueMembers ? 'Hide queue members' : 'View queue members'}
+                  </button>
+          </div>
+
+          {showQueueMembers && <div className="queue-card-list">
+            {queuedSubmissions.map((submission, index) => (
+              <article className="queue-student-card" key={`${submission.studentId}-queue-${submission.submittedAt}-${index}`}>
+                <div className="queue-student-identity">
+                  <span className="queue-rank">#{index + 1}</span>
+                  <div>
+                    <strong>{getStudentDetails(submission)}</strong>
+                    <small>{submission.studentId}</small>
+                  </div>
+                </div>
+                <div className="queue-card-detail">
+                  <span>WAITING FOR</span>
+                  <strong>{submission.exercise}</strong>
+                </div>
+                <div className="queue-card-detail queue-card-waiting">
+                  <span>WAITING DAYS</span>
+                  <strong>{getQueueWaitingDuration(submission)}</strong>
+                </div>
+                <div className="queue-card-detail queue-card-hours">
+                  <span>FLYING HOURS</span>
+                  <strong>{submission.totalFlyingHours} hrs</strong>
+                </div>
+                <button
+                  type="button"
+                  className="btn-approve queue-complete-button"
+                  onClick={() => handleCompleteQueueSubmission(submission)}
+                >
+                  Complete
+                </button>
+              </article>
+            ))}
+          </div>}
+        </section>}
+
+                  {!searchSplNumber.trim() && <section className="leave-section available-section">
           <div className="leave-section-heading">
                       <div className="available-heading-content">
                         <h2>Available for Flying Students</h2>
@@ -995,7 +1098,7 @@ function Dashboard() {
                       <strong>{availableSubmissions.length} STUDENTS</strong>
           </div>
 
-          <div className="submission-table-wrapper">
+          <div className={`submission-table-wrapper ${availableSubmissions.length === 0 ? 'is-empty' : ''}`}>
             <table className="submission-table">
               <thead>
                 <tr>
@@ -1064,7 +1167,7 @@ function Dashboard() {
           </div>
         </section>}
 
-        {!searchSplNumber.trim() && <section className="leave-section">
+        {!searchSplNumber.trim() && showLeaveSummarySection && <section ref={leaveSummarySectionRef} className="leave-section">
           <div className="leave-section-heading">
             <div className="available-heading-content">
               <h2>Leave and Unavailable Students</h2>
