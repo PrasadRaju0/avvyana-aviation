@@ -273,6 +273,7 @@ function ForgotPasswordPage() {
   const [error, setError] = useState('')
   const [otpSent, setOtpSent] = useState(false)
   const [otpVerified, setOtpVerified] = useState(false)
+  const [otpChallenge, setOtpChallenge] = useState('')
 
   const findAccount = async () => {
     const normalizedSpl = form.splNumber.trim()
@@ -305,6 +306,7 @@ function ForgotPasswordPage() {
       })
       const result = await response.json()
       if (!response.ok) return setError(result.error || 'Unable to send OTP.')
+      setOtpChallenge(result.challenge || '')
       setOtpSent(true)
       setError('OTP sent to your email address. Enter it below.')
     } catch {
@@ -320,7 +322,11 @@ function ForgotPasswordPage() {
       const verifyResponse = await fetch('/api/verify-email-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email.trim().toLowerCase(), otp: form.otp.trim() }),
+        body: JSON.stringify({
+          email: form.email.trim().toLowerCase(),
+          otp: form.otp.trim(),
+          challenge: otpChallenge,
+        }),
       })
       const verifyResult = await verifyResponse.json()
       if (!verifyResponse.ok) return setError(verifyResult.error || 'Invalid or expired OTP. Request a new OTP and try again.')
