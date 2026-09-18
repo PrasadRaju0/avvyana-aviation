@@ -5,7 +5,8 @@ module.exports = async (request, response) => {
     return response.status(405).json({ error: 'Method not allowed.' })
   }
 
-  const email = String(request.body?.email || '').trim().toLowerCase()
+  const body = typeof request.body === 'string' ? JSON.parse(request.body || '{}') : (request.body || {})
+  const email = String(body.email || '').trim().toLowerCase()
   if (!email) return response.status(400).json({ error: 'Email is required.' })
 
   const missing = missingVariables()

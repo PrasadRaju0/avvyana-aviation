@@ -23,6 +23,7 @@ function verifyChallenge(challenge, email, otp) {
     const [challengeEmail, challengeOtp, expiresAt, signature] = Buffer.from(challenge, 'base64url').toString().split('|')
     const payload = `${challengeEmail}|${challengeOtp}|${expiresAt}`
     const expectedSignature = crypto.createHmac('sha256', signingSecret()).update(payload).digest('hex')
+    if (!signature || signature.length !== 64) return false
     return challengeEmail === email
       && challengeOtp === otp
       && Number(expiresAt) > Date.now()

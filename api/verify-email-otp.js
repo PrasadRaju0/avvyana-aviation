@@ -5,9 +5,10 @@ module.exports = (request, response) => {
     return response.status(405).json({ error: 'Method not allowed.' })
   }
 
-  const email = String(request.body?.email || '').trim().toLowerCase()
-  const otp = String(request.body?.otp || '').trim()
-  const challenge = String(request.body?.challenge || '')
+  const body = typeof request.body === 'string' ? JSON.parse(request.body || '{}') : (request.body || {})
+  const email = String(body.email || '').trim().toLowerCase()
+  const otp = String(body.otp || '').trim()
+  const challenge = String(body.challenge || '')
 
   if (!email || !/^\d{6}$/.test(otp) || !challenge || !verifyChallenge(challenge, email, otp)) {
     return response.status(400).json({ error: 'Invalid or expired OTP. Request a new OTP and try again.' })
