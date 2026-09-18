@@ -8,6 +8,30 @@ import QueueMembersPage from './QueueMembersPage'
 import { supabase } from './lib/supabase'
 import './App.css'
 
+function sanitizeSplNumber(value) {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+function isValidSplNumber(value) {
+  return /^[A-Z0-9]+$/.test(value) && /[A-Z]/.test(value) && /\d/.test(value)
+}
+
+function sanitizeMobileNumber(value) {
+  return value.replace(/\D/g, '').slice(0, 10)
+}
+
+function sanitizeBatchNumber(value) {
+  return value.replace(/\D/g, '')
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim().toLowerCase())
+}
+
+function isValidFullName(value) {
+  return /^[A-Za-z]+(?:[ '][A-Za-z]+)*$/.test(value.trim())
+}
+
 // ============================
 // STUDENT PORTAL PAGES
 // ============================
@@ -28,6 +52,10 @@ function LoginPage() {
     setError('')
 
     const normalizedSpl = studentId.trim()
+    if (!isValidSplNumber(normalizedSpl)) {
+      setError('SPL Number must contain both letters and numbers.')
+      return
+    }
     const { data: databaseAccount, error: databaseError } = await supabase
       .from('student_accounts')
       .select('spl_number, full_name, batch_number, password')
@@ -98,7 +126,6 @@ function LoginPage() {
           <div className="mobile-logo">Avyanna</div>
 
           <div className="welcome">
-            <span>STUDENT PORTAL</span>
             <h2>Welcome back.</h2>
             <p>Sign in to access your flight training dashboard.</p>
           </div>
@@ -108,17 +135,20 @@ function LoginPage() {
               <label>SPL NUMBER</label>
               <input
                 type="text"
-                placeholder="Enter your SPL Number"
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
+                onChange={(e) => setStudentId(sanitizeSplNumber(e.target.value))}
+                pattern="[A-Z0-9]+"
+                title="SPL Number must contain both letters and numbers, for example AAPLK000."
                 autoComplete="username"
               />
+              <small className="field-hint">Use letters and numbers, for example AAPLK000.</small>
             </div>
 
             <div className="form-group">
               <label>PASSWORD</label>
               <input
                 type="password"
+                minLength={6}
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -180,25 +210,61 @@ function SignupPage() {
   const handleSignup = async (e) => {
     e.preventDefault()
     const normalizedSpl = form.splNumber.trim()
+    const normalizedMobile = sanitizeMobileNumber(form.mobileNumber)
+    const normalizedBatch = sanitizeBatchNumber(form.batchNumber)
+    if (!isValidSplNumber(normalizedSpl)) {
+      setError('SPL Number must contain both letters and numbers.')
+      return
+    }
+    if (!isValidFullName(form.name)) {
+      setError('Enter your full name using letters and spaces only.')
+      return
+    }
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+    if (!isValidEmail(form.email)) {
+      setError('Enter a valid email address, for example student@gmail.com.')
+      return
+    }
+    if (!/^\d{10}$/.test(normalizedMobile)) {
+      setError('Mobile number must contain exactly 10 digits.')
+      return
+    }
+    if (!normalizedBatch) {
+      setError('Batch number must contain numbers only.')
+      return
+    }
 
-    const { data: existingAccount, error: lookupError } = await supabase
-      .from('student_accounts')
-      .select('id')
-      .eq('spl_number', normalizedSpl)
-      .maybeSingle()
+    const normalizedEmail = form.email.trim().toLowerCase()
+    const [{ data: splAccount, error: splLookupError }, { data: emailAccount, error: emailLookupError }] = await Promise.all([
+      supabase.from('student_accounts').select('id').eq('spl_number', normalizedSpl).maybeSingle(),
+      supabase.from('student_accounts').select('id').eq('email', normalizedEmail).maybeSingle(),
+    ])
 
     const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
-    if (existingAccount || (lookupError && accounts.some((item) => item.splNumber === normalizedSpl))) {
-      setError('An account with this SPL Number already exists.')
+    const localDuplicate = accounts.find((item) => (
+      item.splNumber === normalizedSpl
+      || item.email?.toLowerCase() === normalizedEmail
+      || item.mobileNumber === normalizedMobile
+    ))
+    if (splAccount || emailAccount || localDuplicate) {
+      const duplicateField = splAccount || localDuplicate?.splNumber === normalizedSpl
+        ? 'SPL Number'
+        : emailAccount || localDuplicate?.email?.toLowerCase() === normalizedEmail
+          ? 'email address'
+          : 'mobile number'
+      setError(`An account with this ${duplicateField} already exists.`)
       return
     }
 
     const account = {
       name: form.name.trim(),
       splNumber: normalizedSpl,
-      batchNumber: form.batchNumber.trim(),
-      mobileNumber: form.mobileNumber.trim(),
-      email: form.email.trim().toLowerCase(),
+      batchNumber: normalizedBatch,
+      mobileNumber: normalizedMobile,
+      email: normalizedEmail,
       password: form.password,
     }
     const { error: signupError } = await supabase
@@ -212,7 +278,7 @@ function SignupPage() {
       })
 
     if (signupError) {
-      if (!lookupError) {
+      if (!splLookupError && !emailLookupError) {
         setError(`Unable to create account: ${signupError.message}`)
         return
       }
@@ -278,6 +344,14 @@ function ForgotPasswordPage() {
   const findAccount = async () => {
     const normalizedSpl = form.splNumber.trim()
     const normalizedEmail = form.email.trim().toLowerCase()
+    if (!isValidSplNumber(normalizedSpl)) {
+      setError('SPL Number must contain both letters and numbers.')
+      return null
+    }
+    if (!isValidEmail(normalizedEmail)) {
+      setError('Enter a valid email address, for example student@gmail.com.')
+      return null
+    }
     const { data: databaseAccount, error: databaseError } = await supabase
       .from('student_accounts')
       .select('id, spl_number, email')
@@ -348,7 +422,9 @@ function ForgotPasswordPage() {
     e.preventDefault()
     setError('')
     if (!otpVerified) return setError('Verify the OTP before updating your password.')
-    if (form.password.length < 6) return setError('Password must be at least 6 characters.')
+    if (form.password.length < 6) {
+      return setError('Password must be at least 6 characters.')
+    }
     if (form.password !== form.confirmPassword) return setError('Passwords do not match.')
     const account = await findAccount()
     if (!account) return
@@ -375,13 +451,13 @@ function ForgotPasswordPage() {
       <span className="admin-label">STUDENT PORTAL</span><h1>Reset student password</h1>
       <p>Verify your SPL Number and email, then enter the OTP sent by email.</p>
       <form onSubmit={otpVerified ? handleUpdatePassword : otpSent ? handleVerifyOtp : handleSendOtp}>
-        <div className="admin-form-group"><label>SPL NUMBER *</label><input value={form.splNumber} onChange={update('splNumber')} required /></div>
-        <div className="admin-form-group"><label>EMAIL *</label><input type="email" value={form.email} onChange={update('email')} required /></div>
+        <div className="admin-form-group"><label>SPL NUMBER *</label><input value={form.splNumber} onChange={(event) => setForm({ ...form, splNumber: sanitizeSplNumber(event.target.value) })} pattern="[A-Z0-9]+" title="SPL Number must contain both letters and numbers, for example AAPLK000." required /><small className="field-hint">Use letters and numbers, for example AAPLK000.</small></div>
+        <div className="admin-form-group"><label>EMAIL *</label><input type="email" value={form.email} onChange={update('email')} pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" title="Enter a valid email address, for example student@gmail.com." required /><small className="field-hint">Use a valid email address, for example student@gmail.com.</small></div>
         {otpSent && <div className="otp-notice">OTP sent to your email address. Enter OTP to continue.</div>}
         {otpSent && !otpVerified && <div className="admin-form-group"><label>ENTER OTP *</label><input inputMode="numeric" pattern="[0-9]{6}" maxLength="6" value={form.otp} onChange={update('otp')} required /></div>}
         {otpVerified && <>
           <div className="admin-form-group"><label>NEW PASSWORD *</label><input type="password" value={form.password} onChange={update('password')} required /></div>
-          <div className="admin-form-group"><label>CONFIRM PASSWORD *</label><input type="password" value={form.confirmPassword} onChange={update('confirmPassword')} required /></div>
+          <div className="admin-form-group"><label>CONFIRM PASSWORD *</label><input type="password" minLength={6} value={form.confirmPassword} onChange={update('confirmPassword')} required /></div>
         </>}
         {error && <div className="login-error">{error}</div>}
         <button type="submit" className="admin-back-button">
@@ -399,17 +475,19 @@ function ForgotPasswordPage() {
 
 function StudentAccountForm({ title, submitLabel, form, setForm, error, onSubmit, onBack, reset = false }) {
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+  const updateSplNumber = (e) => setForm({ ...form, splNumber: sanitizeSplNumber(e.target.value) })
+  const updateMobileNumber = (e) => setForm({ ...form, mobileNumber: sanitizeMobileNumber(e.target.value) })
   return (
     <main className="admin-page"><div className="admin-card">
       <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
       <span className="admin-label">STUDENT PORTAL</span><h1>{title}</h1>
       <form onSubmit={onSubmit}>
-        {!reset && <div className="admin-form-group"><label>NAME *</label><input value={form.name} onChange={update('name')} required /></div>}
-        <div className="admin-form-group"><label>SPL NUMBER *</label><input value={form.splNumber} onChange={update('splNumber')} required /></div>
-        {!reset && <div className="admin-form-group"><label>BATCH NUMBER *</label><input value={form.batchNumber} onChange={update('batchNumber')} required /></div>}
-        <div className="admin-form-group"><label>MOBILE NUMBER *</label><input type="tel" inputMode="tel" value={form.mobileNumber} onChange={update('mobileNumber')} required /></div>
-        {!reset && <div className="admin-form-group"><label>EMAIL *</label><input type="email" value={form.email} onChange={update('email')} required /></div>}
-        <div className="admin-form-group"><label>{reset ? 'NEW PASSWORD *' : 'PASSWORD *'}</label><input type="password" value={form.password} onChange={update('password')} required /></div>
+        {!reset && <div className="admin-form-group"><label>FULL NAME *</label><input value={form.name} onChange={update('name')} pattern="[A-Za-z]+(?:[ '][A-Za-z]+)*" title="Enter your full name using letters and spaces only." required /></div>}
+        <div className="admin-form-group"><label>SPL NUMBER *</label><input value={form.splNumber} onChange={updateSplNumber} pattern="[A-Z0-9]+" title="SPL Number must contain both letters and numbers, for example AAPLK000." required /><small className="field-hint">Use letters and numbers, for example AAPLK000.</small></div>
+        {!reset && <div className="admin-form-group"><label>BATCH NUMBER *</label><input inputMode="numeric" value={form.batchNumber} onChange={(event) => setForm({ ...form, batchNumber: sanitizeBatchNumber(event.target.value) })} pattern="[0-9]+" title="Batch number must contain numbers only." required /><small className="field-hint">Numbers only.</small></div>}
+        <div className="admin-form-group"><label>MOBILE NUMBER *</label><input type="tel" inputMode="numeric" value={form.mobileNumber} onChange={updateMobileNumber} pattern="[0-9]{10}" maxLength="10" title="Mobile number must contain exactly 10 digits." required /><small className="field-hint">Enter exactly 10 digits.</small></div>
+        {!reset && <div className="admin-form-group"><label>EMAIL *</label><input type="email" value={form.email} onChange={update('email')} pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" title="Enter a valid email address, for example student@gmail.com." required /><small className="field-hint">Use a valid email address, for example student@gmail.com.</small></div>}
+          <div className="admin-form-group"><label>{reset ? 'NEW PASSWORD *' : 'PASSWORD *'}</label><input type="password" minLength={6} value={form.password} onChange={update('password')} required /></div>
         {reset && <div className="admin-form-group"><label>CONFIRM PASSWORD *</label><input type="password" value={form.confirmPassword} onChange={update('confirmPassword')} required /></div>}
         {error && <div className="login-error">{error}</div>}
         <button type="submit" className="admin-back-button">{submitLabel}</button>
@@ -539,6 +617,14 @@ function AdminSignupPage() {
   const handleSignup = (e) => {
     e.preventDefault()
     const accounts = JSON.parse(localStorage.getItem('adminAccounts') || '[]')
+    if (!isValidFullName(form.name)) {
+      setError('Enter the full name using letters and spaces only.')
+      return
+    }
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
     if (accounts.some((item) => item.username === form.username.trim())) {
       setError('That Admin username already exists.')
       return
@@ -578,12 +664,12 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
       <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
       <span className="admin-label">ADMIN PORTAL</span><h1>{title}</h1>
       <form onSubmit={onSubmit}>
-        {!reset && <div className="admin-form-group"><label>FULL NAME</label><input value={form.name} onChange={update('name')} required /></div>}
+        {!reset && <div className="admin-form-group"><label>FULL NAME</label><input value={form.name} onChange={update('name')} pattern="[A-Za-z]+(?:[ '][A-Za-z]+)*" title="Enter your full name using letters and spaces only." required /></div>}
         <div className="admin-form-group"><label>USERNAME</label><input value={form.username} onChange={update('username')} required /></div>
         <div className="admin-form-group"><label>EMAIL</label><input type="email" value={form.email} onChange={update('email')} required /></div>
         {!reset && <div className="admin-form-group"><label>ROLE</label><select value={form.role} onChange={update('role')} required><option value="CFI">CFI</option><option value="DCFI">DCFI</option></select></div>}
-        <div className="admin-form-group"><label>{reset ? 'NEW PASSWORD' : 'PASSWORD'}</label><input type="password" value={form.password} onChange={update('password')} required /></div>
-        {reset && <div className="admin-form-group"><label>CONFIRM PASSWORD</label><input type="password" value={form.confirmPassword} onChange={update('confirmPassword')} required /></div>}
+        <div className="admin-form-group"><label>{reset ? 'NEW PASSWORD' : 'PASSWORD'}</label><input type="password" minLength={6} value={form.password} onChange={update('password')} required /></div>
+        {reset && <div className="admin-form-group"><label>CONFIRM PASSWORD</label><input type="password" minLength={6} value={form.confirmPassword} onChange={update('confirmPassword')} required /></div>}
         {error && <div className="login-error">{error}</div>}
         <button type="submit" className="admin-back-button">{submitLabel}</button>
       </form>
