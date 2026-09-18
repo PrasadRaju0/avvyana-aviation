@@ -272,9 +272,9 @@ function ForgotPasswordPage() {
   const [form, setForm] = useState({ splNumber: '', email: '', otp: '', password: '', confirmPassword: '' })
   const [error, setError] = useState('')
   const [otpSent, setOtpSent] = useState(false)
+  const [otpVerified, setOtpVerified] = useState(false)
 
-  const handleReset = async (e) => {
-    e.preventDefault()
+  const findAccount = async () => {
     const normalizedSpl = form.splNumber.trim()
     const normalizedEmail = form.email.trim().toLowerCase()
     const { data: databaseAccount, error: databaseError } = await supabase
@@ -287,35 +287,59 @@ function ForgotPasswordPage() {
     const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
     const localIndex = accounts.findIndex((item) => item.splNumber === normalizedSpl && item.email?.toLowerCase() === normalizedEmail)
     if (!databaseAccount && (!databaseError || localIndex === -1)) {
-      return setError('No student account matches that SPL Number and email.')
+      setError('No student account matches that SPL Number and email.')
+      return null
     }
+    return { databaseAccount, accounts, localIndex, normalizedEmail }
+  }
 
+  const handleSendOtp = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!await findAccount()) return
     try {
-      if (!otpSent) {
-        const response = await fetch('/api/send-email-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: form.email }),
-        })
-        const result = await response.json()
-        if (!response.ok) return setError(result.error || 'Unable to send OTP.')
-        setOtpSent(true)
-        setError('OTP sent to your email address. Enter it below.')
-        return
-      }
+      const response = await fetch('/api/send-email-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email.trim().toLowerCase() }),
+      })
+      const result = await response.json()
+      if (!response.ok) return setError(result.error || 'Unable to send OTP.')
+      setOtpSent(true)
+      setError('OTP sent to your email address. Enter it below.')
+    } catch {
+      return setError('Unable to contact the email OTP server. Please start it with npm run server.')
+    }
+  }
 
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!/^\d{6}$/.test(form.otp.trim())) return setError('Enter the 6-digit OTP from your email.')
+    try {
       const verifyResponse = await fetch('/api/verify-email-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email, otp: form.otp }),
+        body: JSON.stringify({ email: form.email.trim().toLowerCase(), otp: form.otp.trim() }),
       })
       const verifyResult = await verifyResponse.json()
-      if (!verifyResponse.ok) return setError(verifyResult.error || 'Invalid OTP.')
+      if (!verifyResponse.ok) return setError(verifyResult.error || 'Invalid or expired OTP. Request a new OTP and try again.')
+      setOtpVerified(true)
+      setError('OTP verified. Enter and confirm your new password.')
     } catch {
-      return setError('Unable to contact the SMS service. Please start the OTP server.')
+      setError('Unable to contact the email OTP server. Please start it with npm run server.')
     }
+  }
+
+  const handleUpdatePassword = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!otpVerified) return setError('Verify the OTP before updating your password.')
     if (form.password.length < 6) return setError('Password must be at least 6 characters.')
     if (form.password !== form.confirmPassword) return setError('Passwords do not match.')
+    const account = await findAccount()
+    if (!account) return
+    const { databaseAccount, accounts, localIndex, normalizedEmail } = account
     if (databaseAccount) {
       const { error: updateError } = await supabase
         .from('student_accounts')
@@ -337,15 +361,19 @@ function ForgotPasswordPage() {
       <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
       <span className="admin-label">STUDENT PORTAL</span><h1>Reset student password</h1>
       <p>Verify your SPL Number and email, then enter the OTP sent by email.</p>
-      <form onSubmit={handleReset}>
+      <form onSubmit={otpVerified ? handleUpdatePassword : otpSent ? handleVerifyOtp : handleSendOtp}>
         <div className="admin-form-group"><label>SPL NUMBER *</label><input value={form.splNumber} onChange={update('splNumber')} required /></div>
         <div className="admin-form-group"><label>EMAIL *</label><input type="email" value={form.email} onChange={update('email')} required /></div>
         {otpSent && <div className="otp-notice">OTP sent to your email address. Enter OTP to continue.</div>}
-        {otpSent && <div className="admin-form-group"><label>ENTER OTP *</label><input inputMode="numeric" maxLength="6" value={form.otp} onChange={update('otp')} required /></div>}
-        <div className="admin-form-group"><label>NEW PASSWORD *</label><input type="password" value={form.password} onChange={update('password')} required={otpSent} /></div>
-        <div className="admin-form-group"><label>CONFIRM PASSWORD *</label><input type="password" value={form.confirmPassword} onChange={update('confirmPassword')} required={otpSent} /></div>
+        {otpSent && !otpVerified && <div className="admin-form-group"><label>ENTER OTP *</label><input inputMode="numeric" pattern="[0-9]{6}" maxLength="6" value={form.otp} onChange={update('otp')} required /></div>}
+        {otpVerified && <>
+          <div className="admin-form-group"><label>NEW PASSWORD *</label><input type="password" value={form.password} onChange={update('password')} required /></div>
+          <div className="admin-form-group"><label>CONFIRM PASSWORD *</label><input type="password" value={form.confirmPassword} onChange={update('confirmPassword')} required /></div>
+        </>}
         {error && <div className="login-error">{error}</div>}
-        <button type="submit" className="admin-back-button">{otpSent ? 'UPDATE PASSWORD' : 'SEND OTP'}</button>
+        <button type="submit" className="admin-back-button">
+          {otpVerified ? 'UPDATE PASSWORD' : otpSent ? 'ENTER OTP' : 'SEND OTP'}
+        </button>
       </form>
       <button type="button" className="admin-return-button" onClick={() => navigate('/')}>BACK TO LOGIN</button>
     </div></main>

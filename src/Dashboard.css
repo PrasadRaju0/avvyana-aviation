@@ -1245,6 +1245,34 @@
   letter-spacing: 0.7px;
 }
 
+.leave-close-action {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 118px;
+}
+
+.leave-close-action input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid #cbd9e2;
+  border-radius: 5px;
+  color: #17344d;
+  font: inherit;
+  font-size: 11px;
+}
+
+.leave-close-action label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #60788b;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
 .btn-close-leave:hover {
   background: #dcefe5;
 }

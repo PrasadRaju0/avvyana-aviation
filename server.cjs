@@ -1,5 +1,6 @@
-require('dotenv').config()
 const http = require('http')
+const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, 'avvyana-aviation.env') })
 const twilio = require('twilio')
 const nodemailer = require('nodemailer')
 

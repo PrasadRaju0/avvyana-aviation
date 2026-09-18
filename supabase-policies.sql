@@ -5,6 +5,12 @@ alter table public.student_accounts enable row level security;
 alter table public.flight_submissions enable row level security;
 alter table public.leave_requests enable row level security;
 
+-- Fields used when an admin records the actual return and closes a leave.
+alter table public.leave_requests
+  add column if not exists actual_return_date date,
+  add column if not exists return_reported_at timestamptz,
+  add column if not exists closure_closed_at timestamptz;
+
 -- Add fields used by the current flight-availability form if the table was
 -- created from an older schema.
 alter table public.flight_submissions

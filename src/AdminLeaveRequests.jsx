@@ -53,6 +53,7 @@ function AdminLeaveRequests() {
   const [selectedRequestKeys, setSelectedRequestKeys] = useState([])
   const [activeView, setActiveView] = useState(null)
   const [successMessage, setSuccessMessage] = useState('')
+  const [closingDates, setClosingDates] = useState({})
   const [leaveRequests, setLeaveRequests] = useState(() => JSON.parse(
     localStorage.getItem('leaveRequests') || '[]'
   ))
@@ -81,6 +82,9 @@ function AdminLeaveRequests() {
         reviewedRole: item.reviewed_role,
         reviewedAt: item.reviewed_at,
         requestedAt: item.created_at,
+        returnReportedAt: item.return_reported_at || item.returnReportedAt || null,
+        actualReturnDate: item.actual_return_date || item.actualReturnDate || null,
+        closureClosedAt: item.closure_closed_at || item.closureClosedAt || null,
       })))
     }
 
@@ -177,30 +181,45 @@ function AdminLeaveRequests() {
     window.setTimeout(() => setSuccessMessage(''), 3000)
   }
 
-  const closeLeave = (request) => {
-    if (!request.returnReportedAt) return
-
-    const actualReturnDate = window.prompt(
-      'Enter the actual return date (YYYY-MM-DD):',
-      getTodayDate()
-    )?.trim()
-    if (!actualReturnDate) return
-
-    const today = getTodayDate()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(actualReturnDate) || actualReturnDate < request.fromDate || actualReturnDate > today) {
-      window.alert('Enter a valid return date between the leave start date and today.')
+  const closeLeave = async (request, closingDate) => {
+    if (!closingDate) {
+      window.alert('Select the actual return date first.')
       return
     }
 
-    if (!window.confirm(`Close ${request.studentName || request.studentId}'s leave record for ${formatDate(actualReturnDate)}?`)) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(closingDate)) {
+      window.alert('Select a valid actual return date.')
+      return
+    }
 
+    if (!window.confirm(`Close ${request.studentName || request.studentId}'s leave record with actual return date ${formatDate(closingDate)}?`)) return
+
+    const closureTimestamp = new Date().toISOString()
     const updatedRequests = leaveRequests.map((item) => item.requestedAt === request.requestedAt
-      ? { ...item, actualReturnDate, closureClosedAt: new Date().toISOString() }
+      ? { ...item, actualReturnDate: closingDate, closureClosedAt: closureTimestamp }
       : item
     )
+
+    if (request.id) {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          actual_return_date: closingDate,
+          return_reported_at: request.returnReportedAt || new Date().toISOString(),
+          closure_closed_at: closureTimestamp,
+        })
+        .eq('id', request.id)
+
+      if (error) {
+        setSuccessMessage(`Unable to close leave: ${error.message}`)
+        window.setTimeout(() => setSuccessMessage(''), 3000)
+        return
+      }
+    }
+
     localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
     setLeaveRequests(updatedRequests)
-    setSuccessMessage('Leave record closed.')
+    setSuccessMessage('Leave record closed successfully.')
     window.setTimeout(() => setSuccessMessage(''), 3000)
   }
 
@@ -302,7 +321,9 @@ function AdminLeaveRequests() {
     window.setTimeout(() => setSuccessMessage(''), 3000)
   }
 
-  const closureRequests = leaveRequests.filter((request) => request.status === 'Approved')
+  const closureRequests = leaveRequests.filter((request) => (
+    request.status === 'Approved' && !request.closureClosedAt
+  ))
 
   if (!accessGranted) {
     return (
@@ -544,14 +565,34 @@ function AdminLeaveRequests() {
                     <td><strong>{request.studentName || request.studentId}</strong><br />{request.studentId}</td>
                     <td>{formatDate(request.fromDate)}</td>
                     <td>{formatDate(request.toDate)}</td>
-                    <td><strong>{getLeaveDuration(request.fromDate, request.toDate)}</strong></td>
+                    <td><strong>{getLeaveDuration(request.fromDate, request.actualReturnDate || request.toDate)}</strong></td>
                     <td>{request.reviewedBy || approverNames[request.reviewedRole] || '-'}</td>
                     <td>{request.actualReturnDate ? formatDate(request.actualReturnDate) : '-'}</td>
                     <td><span className={`availability-status ${returnStatus.className}`}>{returnStatus.label}</span></td>
                     <td>
-                      {request.returnReportedAt && !request.closureClosedAt
-                        ? <button type="button" className="btn-close-leave" onClick={() => closeLeave(request)}>CLOSE LEAVE</button>
-                        : <span className="reviewed-by">{request.closureClosedAt ? 'Closed' : 'Waiting for return'}</span>}
+                      {!request.closureClosedAt
+                        ? <div className="leave-close-action">
+                          <label>
+                            ACTUAL RETURN DATE
+                            <input
+                              type="date"
+                              aria-label={`Actual return date for ${request.studentName || request.studentId}`}
+                              value={closingDates[getRequestKey(request)] || ''}
+                              onChange={(event) => setClosingDates((dates) => ({
+                                ...dates,
+                                [getRequestKey(request)]: event.target.value,
+                              }))}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="btn-close-leave"
+                            onClick={() => closeLeave(request, closingDates[getRequestKey(request)])}
+                          >
+                            CLOSE LEAVE
+                          </button>
+                        </div>
+                        : <span className="reviewed-by">Closed</span>}
                     </td>
                   </tr>
                 )
