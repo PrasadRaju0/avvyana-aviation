@@ -304,13 +304,20 @@ function ForgotPasswordPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.email.trim().toLowerCase() }),
       })
-      const result = await response.json()
-      if (!response.ok) return setError(result.error || 'Unable to send OTP.')
+      const responseText = await response.text()
+      let result
+      try {
+        result = JSON.parse(responseText)
+      } catch {
+        result = { error: responseText || `Email OTP API returned HTTP ${response.status}.` }
+      }
+      if (!response.ok) return setError(result.error || `Email OTP API returned HTTP ${response.status}.`)
+      if (!result.challenge) return setError('Email OTP API did not return a valid challenge. Redeploy the latest version.')
       setOtpChallenge(result.challenge || '')
       setOtpSent(true)
       setError('OTP sent to your email address. Enter it below.')
-    } catch {
-      return setError('Unable to contact the email OTP server. Please start it with npm run server.')
+    } catch (error) {
+      return setError(`Unable to contact the email OTP server: ${error.message || 'network request failed'}.`)
     }
   }
 
