@@ -1,6 +1,6 @@
-const { missingVariables, sendOtp } = require('./_otp')
+import { missingVariables, sendOtp } from './_otp.js'
 
-module.exports = async (request, response) => {
+export default async function sendEmailOtp(request, response) {
   if (request.method !== 'POST') {
     return response.status(405).json({ error: 'Method not allowed.' })
   }

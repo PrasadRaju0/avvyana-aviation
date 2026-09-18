@@ -1,5 +1,5 @@
-const crypto = require('crypto')
-const nodemailer = require('nodemailer')
+import crypto from 'crypto'
+import nodemailer from 'nodemailer'
 
 const requiredVariables = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM']
 
@@ -52,4 +52,4 @@ async function sendOtp(email) {
   return createChallenge(email, otp)
 }
 
-module.exports = { missingVariables, sendOtp, verifyChallenge }
+export { missingVariables, sendOtp, verifyChallenge }

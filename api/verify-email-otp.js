@@ -1,6 +1,6 @@
-const { verifyChallenge } = require('./_otp')
+import { verifyChallenge } from './_otp.js'
 
-module.exports = (request, response) => {
+export default function verifyEmailOtp(request, response) {
   if (request.method !== 'POST') {
     return response.status(405).json({ error: 'Method not allowed.' })
   }
