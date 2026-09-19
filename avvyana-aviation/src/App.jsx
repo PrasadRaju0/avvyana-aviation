@@ -686,14 +686,6 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
 function App() {
   const [showSplash, setShowSplash] = useState(true)
   const location = useLocation()
-  const [isFirstVisit] = useState(() => {
-    try {
-      const navigationEntry = window.performance.getEntriesByType('navigation')[0]
-      return navigationEntry?.type !== 'reload'
-    } catch {
-      return true
-    }
-  })
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -711,7 +703,7 @@ function App() {
   }, [])
 
   return showSplash ? (
-    <SplashScreen isFirstVisit={isFirstVisit && location.pathname === '/'} onFinish={() => setShowSplash(false)} />
+    <SplashScreen isFirstVisit={location.pathname === '/'} onFinish={() => setShowSplash(false)} />
   ) : (
     <Routes>
       <Route path="/" element={<LoginPage />} />
