@@ -27,6 +27,19 @@ export default function SplashScreen({ isFirstVisit, onFinish }) {
     }
   }, [onFinish])
 
+  if (!isFirstVisit) {
+    return (
+      <div className={`splash-screen reload-splash ${isExiting ? 'is-exiting' : ''}`} aria-live="polite">
+        <div className="reload-loader" aria-label="Loading">
+          <div className="reload-aircraft-orbit" aria-hidden="true">
+            <span className="reload-aircraft">✈</span>
+          </div>
+          <span className="reload-dots" aria-hidden="true" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`splash-screen ${isFirstVisit ? 'first-visit' : 'returning-visit'} ${isExiting ? 'is-exiting' : ''}`} aria-live="polite">
       <div className="splash-vignette" aria-hidden="true" />
