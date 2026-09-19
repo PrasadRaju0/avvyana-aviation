@@ -57,11 +57,17 @@
   border-radius: 50%;
   transform: rotate(-22deg);
   filter: drop-shadow(0 0 8px rgba(0, 122, 192, 0.35));
+  animation: reloadDotsOrbit 1.8s linear infinite;
 }
 
 @keyframes reloadAircraftOrbit {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes reloadDotsOrbit {
+  from { transform: rotate(-22deg); }
+  to { transform: rotate(338deg); }
 }
 
 .splash-vignette {
@@ -715,6 +721,7 @@
 @media (prefers-reduced-motion: reduce) {
   .splash-screen,
   .reload-aircraft-orbit,
+  .reload-dots,
   .aaa-piece,
   .aaa-piece::before,
   .aaa-logo-container::after,
@@ -733,6 +740,10 @@
   }
 
   .reload-aircraft-orbit {
+    animation: none;
+  }
+
+  .reload-dots {
     animation: none;
   }
 
