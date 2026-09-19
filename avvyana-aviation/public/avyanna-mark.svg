@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 100" role="img" aria-label="Avyanna Aviation mark">
+  <defs>
+    <linearGradient id="avyanna-blue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#08a9e8"/>
+      <stop offset="0.5" stop-color="#087ac0"/>
+      <stop offset="1" stop-color="#071a8b"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#avyanna-blue)" stroke-linecap="round" stroke-linejoin="round" stroke-width="14">
+    <path d="M8 80 34 22Q42 6 50 22L76 80H8"/>
+    <path d="M58 80 84 22Q92 6 100 22L126 80H58"/>
+    <path d="M108 80 134 22Q142 6 150 22L176 80H108"/>
+  </g>
+</svg>
