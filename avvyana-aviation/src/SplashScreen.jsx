@@ -34,6 +34,7 @@ export default function SplashScreen({ isFirstVisit, onFinish }) {
           <div className="reload-aircraft-orbit" aria-hidden="true">
             <span className="reload-aircraft">✈</span>
           </div>
+          <span className="reload-dots" aria-hidden="true" />
         </div>
       </div>
     )
