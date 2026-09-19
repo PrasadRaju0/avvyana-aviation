@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Route, Routes, useNavigate } from 'react-router-dom'
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import FlightAvailability from './FlightAvailability'
 import LeaveRequest from './LeaveRequest'
 import Dashboard from './Dashboard'
@@ -685,6 +685,7 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
 
 function App() {
   const [showSplash, setShowSplash] = useState(true)
+  const location = useLocation()
   const [isFirstVisit] = useState(() => {
     try {
       const navigationEntry = window.performance.getEntriesByType('navigation')[0]
@@ -710,7 +711,7 @@ function App() {
   }, [])
 
   return showSplash ? (
-    <SplashScreen isFirstVisit={isFirstVisit} onFinish={() => setShowSplash(false)} />
+    <SplashScreen isFirstVisit={isFirstVisit && location.pathname === '/'} onFinish={() => setShowSplash(false)} />
   ) : (
     <Routes>
       <Route path="/" element={<LoginPage />} />
