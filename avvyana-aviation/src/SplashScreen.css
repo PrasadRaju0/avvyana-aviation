@@ -20,9 +20,8 @@
 
 .reload-splash {
   background:
-    linear-gradient(180deg, rgba(2, 12, 29, 0.46), rgba(2, 12, 29, 0.72)),
-    url('/anmibackground.png') center center / cover no-repeat,
-    #061827;
+    radial-gradient(circle at center, rgba(12, 57, 82, 0.3), transparent 42%),
+    linear-gradient(180deg, #020b18 0%, #061827 100%);
 }
 
 .reload-loader {
