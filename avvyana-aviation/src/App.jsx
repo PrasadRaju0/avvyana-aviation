@@ -686,7 +686,7 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
 function App() {
   const [showSplash, setShowSplash] = useState(true)
   const [isFirstVisit] = useState(() => {
-    const splashSeenKey = 'avyanna-splash-seen'
+    const splashSeenKey = 'avyanna-splash-seen-v2'
 
     try {
       const hasSeenSplash = window.localStorage.getItem(splashSeenKey) === 'true'
