@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import './Dashboard.css'
@@ -85,6 +85,23 @@ function AdminLeaveRequests() {
   const [leaveRequests, setLeaveRequests] = useState(() => JSON.parse(
     localStorage.getItem('leaveRequests') || '[]'
   ))
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('section') === 'gatepass' ? 'gatepass-closure' : 'approvals'
+  })
+  const [gatePassFilter, setGatePassFilter] = useState('all')
+  const [gatePassSearch, setGatePassSearch] = useState('')
+
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab)
+    const url = new URL(window.location.href)
+    if (newTab === 'gatepass-closure') {
+      url.searchParams.set('section', 'gatepass')
+    } else {
+      url.searchParams.delete('section')
+    }
+    window.history.replaceState({}, '', url.toString())
+  }
 
   useEffect(() => {
     let isMounted = true
@@ -407,6 +424,48 @@ function AdminLeaveRequests() {
     return matchesStatus && matchesDate
   })
 
+  const approvedLeaves = useMemo(() => {
+    return leaveRequests.filter((r) => r.status === 'Approved')
+  }, [leaveRequests])
+
+  const gatePassPendingCount = useMemo(() => {
+    return approvedLeaves.filter((r) => !isRequestGatePassIssued(r)).length
+  }, [approvedLeaves])
+
+  const onLeaveActiveCount = useMemo(() => {
+    return approvedLeaves.filter((r) => isRequestGatePassIssued(r) && !r.closureClosedAt && !r.returnReportedAt).length
+  }, [approvedLeaves])
+
+  const closedLeavesCount = useMemo(() => {
+    return approvedLeaves.filter((r) => Boolean(r.closureClosedAt || r.returnReportedAt)).length
+  }, [approvedLeaves])
+
+  const filteredGatePassRequests = useMemo(() => {
+    return approvedLeaves.filter((req) => {
+      const studentInfo = studentAccountsMap[req.studentId] || {}
+      const studentName = req.studentName || studentInfo.name || req.studentId || ''
+      const splNumber = req.studentId || ''
+      const reason = req.reason || ''
+      const mobile = req.mobileNumber || studentInfo.mobileNumber || ''
+      const searchTarget = `${studentName} ${splNumber} ${reason} ${mobile}`.toLowerCase()
+      const matchesSearch = !gatePassSearch.trim() || searchTarget.includes(gatePassSearch.toLowerCase().trim())
+
+      const isIssued = isRequestGatePassIssued(req)
+      const isClosed = Boolean(req.closureClosedAt || req.returnReportedAt)
+
+      let matchesSubFilter = true
+      if (gatePassFilter === 'pending-gatepass') {
+        matchesSubFilter = !isIssued
+      } else if (gatePassFilter === 'on-leave') {
+        matchesSubFilter = isIssued && !isClosed
+      } else if (gatePassFilter === 'closed') {
+        matchesSubFilter = isClosed
+      }
+
+      return matchesSearch && matchesSubFilter
+    })
+  }, [approvedLeaves, gatePassSearch, gatePassFilter, studentAccountsMap])
+
   const pendingFilteredRequests = filteredRequests.filter(
     (request) => request.status === 'Pending approval'
   )
@@ -567,10 +626,17 @@ function AdminLeaveRequests() {
             </button>
             <button
               type="button"
-              className="btn-admin-nav-item active"
-              onClick={() => navigate('/admin/leave-requests')}
+              className={`btn-admin-nav-item ${activeTab === 'approvals' ? 'active' : ''}`}
+              onClick={() => handleTabChange('approvals')}
             >
               📋 Leave Approvals
+            </button>
+            <button
+              type="button"
+              className={`btn-admin-nav-item ${activeTab === 'gatepass-closure' ? 'active' : ''}`}
+              onClick={() => handleTabChange('gatepass-closure')}
+            >
+              🎫 Gatepass / Leave Closure
             </button>
             <button
               type="button"
@@ -594,182 +660,523 @@ function AdminLeaveRequests() {
 
       {successMessage && <div className="success-banner">{successMessage}</div>}
 
-      <section className="dashboard-content">
-        <div className="dashboard-heading">
-          <div>
-            <span className="dashboard-label">STUDENT SERVICES</span>
-            <h1>Leave Approval</h1>
-            <p>Review, filter, approve, and reject student leave requests.</p>
+      <div className="admin-portal-tabs-container">
+        <button
+          type="button"
+          className={`admin-portal-tab ${activeTab === 'approvals' ? 'active' : ''}`}
+          onClick={() => handleTabChange('approvals')}
+        >
+          <span className="portal-tab-icon">📋</span>
+          <div className="portal-tab-text">
+            <span className="portal-tab-title">CFI / DCFI Leave Approvals</span>
+            <span className="portal-tab-desc">Stage 2: Review applications &amp; grant flight clearances</span>
           </div>
-          <strong>{filteredRequests.length} RECORDS</strong>
-        </div>
+          {pendingFilteredRequests.length > 0 && (
+            <span className="portal-tab-count amber">{pendingFilteredRequests.length} pending</span>
+          )}
+        </button>
 
-        <div className="leave-request-filters">
-          <label>
-            SELECT DATE
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
-          </label>
-          <div className="leave-status-tabs" role="tablist" aria-label="Leave request status">
-            {['All', 'Pending approval', 'Approved', 'Rejected'].map((status) => (
+        <button
+          type="button"
+          className={`admin-portal-tab ${activeTab === 'gatepass-closure' ? 'active' : ''}`}
+          onClick={() => handleTabChange('gatepass-closure')}
+        >
+          <span className="portal-tab-icon">🎫</span>
+          <div className="portal-tab-text">
+            <span className="portal-tab-title">Gatepass / Leave Closure Section</span>
+            <span className="portal-tab-desc">Stages 3 &amp; 4: Issue gate passes &amp; execute campus closures</span>
+          </div>
+          {gatePassPendingCount > 0 ? (
+            <span className="portal-tab-count cyan">{gatePassPendingCount} to issue</span>
+          ) : (
+            <span className="portal-tab-count green">{approvedLeaves.length} records</span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'gatepass-closure' ? (
+        <section className="dashboard-content admin-gatepass-section">
+          {/* Heading */}
+          <div className="gatepass-section-header">
+            <div className="gatepass-header-info">
+              <div className="section-pill-tag">
+                <span className="live-pulsing-dot" style={{ background: '#0284c7', boxShadow: '0 0 8px #0284c7' }} />
+                <span>OPERATIONS &amp; SECURITY COMMAND</span>
+              </div>
+              <h1>Gatepass / Leave Closure Section</h1>
+              <p>
+                Issue official Academy Gate Passes (Stage 3), dispatch WhatsApp authorization passes to cadets and security, verify student returns to campus, and execute official leave closures (Stage 4).
+              </p>
+            </div>
+            <div className="gatepass-header-stats-badge">
+              <strong>{approvedLeaves.length}</strong>
+              <span>Approved Records</span>
+            </div>
+          </div>
+
+          {/* KPI Stat Cards */}
+          <div className="gatepass-metrics-grid">
+            <div 
+              className={`gatepass-stat-card card-pending ${gatePassFilter === 'pending-gatepass' ? 'active-filter' : ''}`}
+              onClick={() => setGatePassFilter(gatePassFilter === 'pending-gatepass' ? 'all' : 'pending-gatepass')}
+              role="button"
+              tabIndex={0}
+              title="Click to filter pending gate passes"
+            >
+              <div className="stat-card-icon icon-amber">🎫</div>
+              <div className="stat-card-content">
+                <span className="stat-number text-amber">{gatePassPendingCount}</span>
+                <span className="stat-label">Pending Gate Pass</span>
+                <span className="stat-hint">Approved by CFI • Ready to issue &rarr;</span>
+              </div>
+            </div>
+
+            <div 
+              className={`gatepass-stat-card card-onleave ${gatePassFilter === 'on-leave' ? 'active-filter' : ''}`}
+              onClick={() => setGatePassFilter(gatePassFilter === 'on-leave' ? 'all' : 'on-leave')}
+              role="button"
+              tabIndex={0}
+              title="Click to filter cadets currently on leave"
+            >
+              <div className="stat-card-icon icon-cyan">✈</div>
+              <div className="stat-card-content">
+                <span className="stat-number text-cyan">{onLeaveActiveCount}</span>
+                <span className="stat-label">Cadets On Leave</span>
+                <span className="stat-hint">Gate Pass Issued • Outside campus &rarr;</span>
+              </div>
+            </div>
+
+            <div 
+              className={`gatepass-stat-card card-closed ${gatePassFilter === 'closed' ? 'active-filter' : ''}`}
+              onClick={() => setGatePassFilter(gatePassFilter === 'closed' ? 'all' : 'closed')}
+              role="button"
+              tabIndex={0}
+              title="Click to filter closed leaves"
+            >
+              <div className="stat-card-icon icon-emerald">✓</div>
+              <div className="stat-card-content">
+                <span className="stat-number text-emerald">{closedLeavesCount}</span>
+                <span className="stat-label">Completed Closures</span>
+                <span className="stat-hint">Stage 4 Verified &amp; Closed &rarr;</span>
+              </div>
+            </div>
+
+            <div 
+              className={`gatepass-stat-card card-total ${gatePassFilter === 'all' ? 'active-filter' : ''}`}
+              onClick={() => setGatePassFilter('all')}
+              role="button"
+              tabIndex={0}
+              title="Click to view all approved leaves"
+            >
+              <div className="stat-card-icon icon-purple">📋</div>
+              <div className="stat-card-content">
+                <span className="stat-number">{approvedLeaves.length}</span>
+                <span className="stat-label">Total Authorizations</span>
+                <span className="stat-hint">All Approved Cadets &rarr;</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="gatepass-toolbar">
+            <div className="gatepass-search-box">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Search by Cadet Name, SPL (e.g. AAPLK180), Mobile, or Reason..."
+                value={gatePassSearch}
+                onChange={(e) => setGatePassSearch(e.target.value)}
+              />
+              {gatePassSearch && (
+                <button type="button" className="btn-clear-search" onClick={() => setGatePassSearch('')}>✕</button>
+              )}
+            </div>
+
+            <div className="gatepass-filter-pills">
               <button
                 type="button"
-                className={statusFilter === status ? 'active' : ''}
-                onClick={() => setStatusFilter(status)}
-                key={status}
+                className={`gp-pill ${gatePassFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setGatePassFilter('all')}
               >
-                {status === 'Pending approval' ? 'Pending' : status}
+                All ({approvedLeaves.length})
               </button>
-            ))}
+              <button
+                type="button"
+                className={`gp-pill pill-amber ${gatePassFilter === 'pending-gatepass' ? 'active' : ''}`}
+                onClick={() => setGatePassFilter('pending-gatepass')}
+              >
+                ⚠️ Pending Gate Pass ({gatePassPendingCount})
+              </button>
+              <button
+                type="button"
+                className={`gp-pill pill-cyan ${gatePassFilter === 'on-leave' ? 'active' : ''}`}
+                onClick={() => setGatePassFilter('on-leave')}
+              >
+                ✈ On Leave ({onLeaveActiveCount})
+              </button>
+              <button
+                type="button"
+                className={`gp-pill pill-green ${gatePassFilter === 'closed' ? 'active' : ''}`}
+                onClick={() => setGatePassFilter('closed')}
+              >
+                ✓ Closed ({closedLeavesCount})
+              </button>
+            </div>
           </div>
-          <div className="leave-bulk-actions" aria-label="Bulk leave actions">
-            <span className="leave-bulk-count">
-              {pendingFilteredRequests.length} pending
-              {selectedRequestKeys.length > 0 ? ` | ${selectedRequestKeys.length} selected` : ''}
-            </span>
-            <button type="button" className="btn-select-all" onClick={toggleSelectAllPending} disabled={pendingFilteredRequests.length === 0}>
-              {allPendingSelected ? 'CLEAR SELECTION' : 'SELECT ALL PENDING'}
-            </button>
-            <button type="button" className="btn-approve" onClick={() => handleBulkDecision('Approved')} disabled={selectedRequestKeys.length === 0}>
-              APPROVE SELECTED ({selectedRequestKeys.length})
-            </button>
-            <button type="button" className="btn-reject" onClick={() => handleBulkDecision('Rejected')} disabled={selectedRequestKeys.length === 0}>
-              REJECT SELECTED ({selectedRequestKeys.length})
-            </button>
-          </div>
-        </div>
 
-        <div className="submission-table-wrapper">
-          <table className="submission-table leave-request-table">
-            <thead>
-              <tr>
-                <th className="leave-select-column">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all pending leave requests"
-                    checked={allPendingSelected}
-                    onChange={toggleSelectAllPending}
-                    disabled={pendingFilteredRequests.length === 0}
-                  />
-                </th>
-                <th>Student</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Total leave days</th>
-                <th>Reason</th>
-                <th>Status</th>
-                <th>Rejection reason</th>
-                <th>Return status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRequests.length > 0 ? filteredRequests.map((request) => {
-                const originalIndex = leaveRequests.findIndex((item) => item.requestedAt === request.requestedAt)
-                const requestKey = getRequestKey(request)
-                const isSelected = selectedRequestKeys.includes(requestKey)
-                const isPending = request.status === 'Pending approval'
-                const returnStatus = getReturnStatus(request)
+          {/* Gate Pass & Leave Closure Table */}
+          <div className="submission-table-wrapper gatepass-table-wrapper">
+            <table className="submission-table gatepass-operations-table">
+              <thead>
+                <tr>
+                  <th>Cadet Pilot Details</th>
+                  <th>Leave Timeframe</th>
+                  <th>Reason</th>
+                  <th>CFI / DCFI Approval</th>
+                  <th>Stage 3: Gate Pass</th>
+                  <th>Stage 4: Leave Closure</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredGatePassRequests.length > 0 ? (
+                  filteredGatePassRequests.map((request) => {
+                    const studentInfo = studentAccountsMap[request.studentId] || {}
+                    const studentName = request.studentName || studentInfo.name || request.studentId || 'Cadet Pilot'
+                    const batch = request.batchNumber || studentInfo.batchNumber || 'Batch 1'
+                    const mobile = request.mobileNumber || studentInfo.mobileNumber || 'N/A'
+                    const isIssued = isRequestGatePassIssued(request)
+                    const isClosed = Boolean(request.closureClosedAt || request.returnReportedAt)
+                    const reviewer = request.reviewedBy || approverNames[request.reviewedRole] || 'CFI / DCFI'
+                    const duration = getLeaveDuration(request.fromDate, request.toDate)
 
-                return (
-                  <tr key={requestKey}>
-                    <td className="leave-select-column">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select leave request for ${request.studentName || request.studentId}`}
-                        checked={isSelected}
-                        onChange={() => toggleRequestSelection(request)}
-                        disabled={!isPending}
-                      />
-                    </td>
-                    <td><strong>{request.studentName || request.studentId}</strong><br />{request.studentId}</td>
-                    <td>{formatDate(request.fromDate)}</td>
-                    <td>{formatDate(request.toDate)}</td>
-                    <td><strong>{getLeaveDuration(request.fromDate, request.toDate)}</strong></td>
-                    <td>{request.reason}</td>
-                    <td><span className={`availability-status ${request.status.toLowerCase().replace(' ', '-')}`}>{request.status === 'Pending approval' ? 'Pending' : request.status}</span></td>
-                    <td>{request.status === 'Rejected' && request.rejectionReason && !request.rejectionReason.startsWith('GATE_PASS_ISSUED:') ? request.rejectionReason : '-'}</td>
-                    <td><span className={`availability-status ${returnStatus.className}`}>{returnStatus.label}</span></td>
-                    <td>
-                      {request.status === 'Pending approval' ? (
-                        <div className="leave-decision-actions">
-                          <button
-                            type="button"
-                            className="btn-approve"
-                            onClick={() => {
-                              const decisionApprover = askApproverIdentity()
-                              if (decisionApprover) handleDecision(originalIndex, 'Approved', decisionApprover)
-                            }}
-                          >
-                            APPROVE
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-reject"
-                            onClick={() => {
-                              const decisionApprover = askApproverIdentity()
-                              if (decisionApprover) handleDecision(originalIndex, 'Rejected', decisionApprover)
-                            }}
-                          >
-                            REJECT
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="leave-reviewed-cell">
-                          <span className="reviewed-by">{request.status} by {request.reviewedBy || approverNames[request.reviewedRole] || '-'}</span>
-                          {request.status === 'Approved' && (
-                            <div className="admin-approved-actions-row">
-                              {!isRequestGatePassIssued(request) ? (
-                                <button
-                                  type="button"
-                                  className="btn-issue-gatepass"
-                                  onClick={() => handleIssueGatePass(request, false)}
-                                  title="Officially issue Gate Pass for this student (Stage 3)"
-                                >
-                                  🎫 Issue Gate Pass
-                                </button>
-                              ) : (
-                                <span className="admin-gatepass-issued-badge" title="Gate pass has been officially issued">
-                                  ✓ Gate Pass Issued
-                                </span>
-                              )}
+                    return (
+                      <tr key={request.id || request.requestedAt} className={isClosed ? 'row-closed' : isIssued ? 'row-onleave' : 'row-pending-gatepass'}>
+                        {/* Cadet Details */}
+                        <td>
+                          <div className="cadet-name-block">
+                            <strong className="cadet-full-name">{studentName}</strong>
+                            <span className="cadet-spl-tag">{request.studentId}</span>
+                            <span className="cadet-sub-meta">🎖️ {batch} • 📱 {mobile}</span>
+                          </div>
+                        </td>
 
-                              <button
-                                type="button"
-                                className="btn-whatsapp-gatepass"
-                                onClick={() => sendWhatsAppGatePass(request)}
-                                title="Open or Re-send Official Gate Pass on WhatsApp"
-                              >
-                                📲 WhatsApp Gate Pass
-                              </button>
+                        {/* Leave Timeframe */}
+                        <td>
+                          <div className="leave-dates-block">
+                            <span className="dates-range">
+                              {formatDate(request.fromDate)} &rarr; {formatDate(request.toDate)}
+                            </span>
+                            <span className="duration-badge">{duration}</span>
+                          </div>
+                        </td>
 
-                              {!request.closureClosedAt && !request.returnReportedAt ? (
-                                <button
-                                  type="button"
-                                  className="btn-admin-close-leave"
-                                  onClick={() => handleAdminCloseLeave(request)}
-                                  title="Mark student returned to campus and officially close leave (Stage 4)"
-                                >
-                                  ✓ Close Leave
-                                </button>
-                              ) : (
-                                <span className="admin-leave-closed-badge">
-                                  ✓ Leave Closed
-                                </span>
+                        {/* Reason */}
+                        <td>
+                          <span className="leave-reason-text" title={request.reason}>{request.reason}</span>
+                        </td>
+
+                        {/* CFI / DCFI Approval */}
+                        <td>
+                          <div className="commander-approval-pill">
+                            <span className="approval-shield">🛡️</span>
+                            <div>
+                              <strong>{reviewer}</strong>
+                              {request.reviewedAt && (
+                                <small className="approval-time">{formatDate(request.reviewedAt.split('T')[0])}</small>
                               )}
                             </div>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        </td>
+
+                        {/* Stage 3: Gate Pass */}
+                        <td>
+                          <div className="gatepass-action-cell">
+                            {isIssued ? (
+                              <div className="issued-state-wrap">
+                                <span className="badge-gatepass-issued">
+                                  ✓ Gate Pass Issued
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn-whatsapp-gatepass-sm"
+                                  onClick={() => sendWhatsAppGatePass(request)}
+                                  title="Re-send Gate Pass via WhatsApp"
+                                >
+                                  📲 WhatsApp Pass
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="unissued-state-wrap">
+                                <span className="badge-gatepass-awaiting">
+                                  ⚠️ Awaiting Gate Pass
+                                </span>
+                                <div className="gp-action-buttons-group">
+                                  <button
+                                    type="button"
+                                    className="btn-issue-gatepass-primary"
+                                    onClick={() => handleIssueGatePass(request, false)}
+                                    title="Officially issue Gate Pass for this student"
+                                  >
+                                    🎫 Issue Gate Pass
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-whatsapp-gatepass-primary"
+                                    onClick={() => {
+                                      handleIssueGatePass(request, false)
+                                      sendWhatsAppGatePass(request)
+                                    }}
+                                    title="Issue Gate Pass and dispatch via WhatsApp immediately"
+                                  >
+                                    📲 Issue &amp; WhatsApp
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Stage 4: Leave Closure */}
+                        <td>
+                          <div className="closure-action-cell">
+                            {isClosed ? (
+                              <div className="closure-closed-wrap">
+                                <span className="badge-closure-closed">
+                                  ✓ Leave Closed
+                                </span>
+                                <span className="closure-date-note">
+                                  Campus return verified
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="closure-pending-wrap">
+                                <span className="badge-closure-pending">
+                                  {isIssued ? '🚶 Cadet Outside Campus' : '◷ Pending Departure'}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn-close-leave-primary"
+                                  onClick={() => handleAdminCloseLeave(request)}
+                                  title="Confirm cadet has returned to academy and execute official Leave Closure"
+                                >
+                                  ✓ Close Leave (Campus Return)
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan="6" className="empty-submissions">
+                      No approved leave records found matching this filter or search.
                     </td>
                   </tr>
-                )
-              }) : (
-                <tr><td colSpan="10" className="empty-submissions">No leave requests match these filters.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <section className="dashboard-content">
+          <div className="approvals-to-gatepass-banner">
+            <div className="banner-text">
+              <span className="banner-icon">🎫</span>
+              <div>
+                <strong>Gatepass &amp; Leave Closure Command Desk</strong>
+                <span>
+                  {gatePassPendingCount > 0
+                    ? `${gatePassPendingCount} approved cadet${gatePassPendingCount === 1 ? '' : 's'} awaiting Gate Pass issuance.`
+                    : 'Manage issued gate passes, WhatsApp dispatches, and campus return closures.'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-switch-gatepass"
+              onClick={() => handleTabChange('gatepass-closure')}
+            >
+              Open Gatepass / Leave Closure Section &rarr;
+            </button>
+          </div>
+
+          <div className="dashboard-heading">
+            <div>
+              <span className="dashboard-label">STUDENT SERVICES</span>
+              <h1>Leave Approval</h1>
+              <p>Review, filter, approve, and reject student leave requests.</p>
+            </div>
+            <strong>{filteredRequests.length} RECORDS</strong>
+          </div>
+
+          <div className="leave-request-filters">
+            <label>
+              SELECT DATE
+              <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+            </label>
+            <div className="leave-status-tabs" role="tablist" aria-label="Leave request status">
+              {['All', 'Pending approval', 'Approved', 'Rejected'].map((status) => (
+                <button
+                  type="button"
+                  className={statusFilter === status ? 'active' : ''}
+                  onClick={() => setStatusFilter(status)}
+                  key={status}
+                >
+                  {status === 'Pending approval' ? 'Pending' : status}
+                </button>
+              ))}
+            </div>
+            <div className="leave-bulk-actions" aria-label="Bulk leave actions">
+              <span className="leave-bulk-count">
+                {pendingFilteredRequests.length} pending
+                {selectedRequestKeys.length > 0 ? ` | ${selectedRequestKeys.length} selected` : ''}
+              </span>
+              <button type="button" className="btn-select-all" onClick={toggleSelectAllPending} disabled={pendingFilteredRequests.length === 0}>
+                {allPendingSelected ? 'CLEAR SELECTION' : 'SELECT ALL PENDING'}
+              </button>
+              <button type="button" className="btn-approve" onClick={() => handleBulkDecision('Approved')} disabled={selectedRequestKeys.length === 0}>
+                APPROVE SELECTED ({selectedRequestKeys.length})
+              </button>
+              <button type="button" className="btn-reject" onClick={() => handleBulkDecision('Rejected')} disabled={selectedRequestKeys.length === 0}>
+                REJECT SELECTED ({selectedRequestKeys.length})
+              </button>
+            </div>
+          </div>
+
+          <div className="submission-table-wrapper">
+            <table className="submission-table leave-request-table">
+              <thead>
+                <tr>
+                  <th className="leave-select-column">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all pending leave requests"
+                      checked={allPendingSelected}
+                      onChange={toggleSelectAllPending}
+                    />
+                  </th>
+                  <th>Student</th>
+                  <th>From Date</th>
+                  <th>To Date</th>
+                  <th>Duration</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Rejection Reason</th>
+                  <th>Return Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRequests.length > 0 ? filteredRequests.map((request) => {
+                  const originalIndex = leaveRequests.findIndex((item) => item.requestedAt === request.requestedAt)
+                  const requestKey = getRequestKey(request)
+                  const isSelected = selectedRequestKeys.includes(requestKey)
+                  const isPending = request.status === 'Pending approval'
+                  const returnStatus = getReturnStatus(request)
+
+                  return (
+                    <tr key={requestKey}>
+                      <td className="leave-select-column">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select leave request for ${request.studentName || request.studentId}`}
+                          checked={isSelected}
+                          onChange={() => toggleRequestSelection(request)}
+                          disabled={!isPending}
+                        />
+                      </td>
+                      <td><strong>{request.studentName || request.studentId}</strong><br />{request.studentId}</td>
+                      <td>{formatDate(request.fromDate)}</td>
+                      <td>{formatDate(request.toDate)}</td>
+                      <td><strong>{getLeaveDuration(request.fromDate, request.toDate)}</strong></td>
+                      <td>{request.reason}</td>
+                      <td><span className={`availability-status ${request.status.toLowerCase().replace(' ', '-')}`}>{request.status === 'Pending approval' ? 'Pending' : request.status}</span></td>
+                      <td>{request.status === 'Rejected' && request.rejectionReason && !request.rejectionReason.startsWith('GATE_PASS_ISSUED:') ? request.rejectionReason : '-'}</td>
+                      <td><span className={`availability-status ${returnStatus.className}`}>{returnStatus.label}</span></td>
+                      <td>
+                        {request.status === 'Pending approval' ? (
+                          <div className="leave-decision-actions">
+                            <button
+                              type="button"
+                              className="btn-approve"
+                              onClick={() => {
+                                const decisionApprover = askApproverIdentity()
+                                if (decisionApprover) handleDecision(originalIndex, 'Approved', decisionApprover)
+                              }}
+                            >
+                              APPROVE
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-reject"
+                              onClick={() => {
+                                const decisionApprover = askApproverIdentity()
+                                if (decisionApprover) handleDecision(originalIndex, 'Rejected', decisionApprover)
+                              }}
+                            >
+                              REJECT
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="leave-reviewed-cell">
+                            <span className="reviewed-by">{request.status} by {request.reviewedBy || approverNames[request.reviewedRole] || '-'}</span>
+                            {request.status === 'Approved' && (
+                              <div className="admin-approved-actions-row">
+                                {!isRequestGatePassIssued(request) ? (
+                                  <button
+                                    type="button"
+                                    className="btn-issue-gatepass"
+                                    onClick={() => handleIssueGatePass(request, false)}
+                                    title="Officially issue Gate Pass for this student (Stage 3)"
+                                  >
+                                    🎫 Issue Gate Pass
+                                  </button>
+                                ) : (
+                                  <span className="admin-gatepass-issued-badge" title="Gate pass has been officially issued">
+                                    ✓ Gate Pass Issued
+                                  </span>
+                                )}
+
+                                <button
+                                  type="button"
+                                  className="btn-whatsapp-gatepass"
+                                  onClick={() => sendWhatsAppGatePass(request)}
+                                  title="Open or Re-send Official Gate Pass on WhatsApp"
+                                >
+                                  📲 WhatsApp Gate Pass
+                                </button>
+
+                                {!request.closureClosedAt && !request.returnReportedAt ? (
+                                  <button
+                                    type="button"
+                                    className="btn-admin-close-leave"
+                                    onClick={() => handleAdminCloseLeave(request)}
+                                    title="Mark student returned to campus and officially close leave (Stage 4)"
+                                  >
+                                    ✓ Close Leave
+                                  </button>
+                                ) : (
+                                  <span className="admin-leave-closed-badge">
+                                    ✓ Leave Closed
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                }) : (
+                  <tr><td colSpan="10" className="empty-submissions">No leave requests match these filters.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </main>
   )
 }

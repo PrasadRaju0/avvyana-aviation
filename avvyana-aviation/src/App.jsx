@@ -714,6 +714,31 @@ function AdminPortalHome() {
             </div>
           </a>
 
+          {/* Module 3: Gatepass & Leave Closure Operations */}
+          <a 
+            href="/admin/leave-requests?section=gatepass"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="admin-hub-module-card card-gatepass-ops"
+          >
+            <div className="hub-module-top">
+              <div className="hub-module-icon icon-gatepass-ops">🎫</div>
+              <span className="hub-module-badge badge-cyan">OPS &amp; Security Desk</span>
+            </div>
+            <div className="hub-module-body">
+              <h3>Gatepass &amp; Leave Closure</h3>
+              <p>Issue authorized Academy Gate Passes, dispatch official WhatsApp clearances, track student absence status, and complete return closures.</p>
+              <div className="hub-module-indicators">
+                <span className="hub-indicator"><strong>Stage 3</strong> Gate Pass Issuance</span>
+                <span className="hub-indicator"><strong>Stage 4</strong> Return Closure</span>
+              </div>
+            </div>
+            <div className="hub-module-footer">
+              <span>Open Gatepass / Closure Section</span>
+              <span className="hub-arrow">→</span>
+            </div>
+          </a>
+
           {/* Module 3: Live Exercise Queue */}
           <a 
             href="/admin/queue-members"
