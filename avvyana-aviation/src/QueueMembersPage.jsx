@@ -211,13 +211,21 @@ function QueueMembersPage() {
       <div className="queue-page-shell">
         <div className="queue-page-header">
           <div>
-            <span className="dashboard-label">FIRST COME, FIRST SERVED</span>
-            <h1>Queue members</h1>
-            <p>Review the active queue, filter by exercise or batch, and complete selected entries.</p>
+            <span className="dashboard-label">SORTIE DISPATCH QUEUE</span>
+            <h1>Live Sortie Queue</h1>
+            <p>Review the active exercise queue, filter by syllabus sortie or batch, and complete queue assignments.</p>
           </div>
-          <button type="button" className="btn-back-to-dashboard" onClick={() => navigate('/admin/cadets-availability')}>
-            Back to dashboard
-          </button>
+          <div className="queue-header-nav-actions">
+            <button type="button" className="btn-admin-nav-item" onClick={() => navigate('/admin/cadets-availability')}>
+              ✈ Cadets Availability
+            </button>
+            <button type="button" className="btn-admin-nav-item" onClick={() => navigate('/admin/leave-requests')}>
+              📋 Leave Approvals
+            </button>
+            <button type="button" className="btn-admin-nav-item" onClick={() => navigate('/admin')}>
+              ▦ Hub
+            </button>
+          </div>
         </div>
 
         <div className="queue-page-toolbar">

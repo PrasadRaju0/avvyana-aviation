@@ -584,12 +584,23 @@ function FlightAvailability() {
 
             </div>
 
-            <button
-              className="logout-button"
-              onClick={handleLogout}
-            >
-              LOG OUT
-            </button>
+            <div className="summary-actions-row" style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <button
+                type="button"
+                className="leave-premium-back-btn"
+                onClick={() => navigate('/dashboard')}
+                style={{ flex: 1, justifyContent: 'center', margin: 0 }}
+              >
+                ← RETURN TO DASHBOARD
+              </button>
+              <button
+                className="logout-button"
+                onClick={handleLogout}
+                style={{ width: 'auto', padding: '0 24px' }}
+              >
+                LOG OUT
+              </button>
+            </div>
 
           </div>
 

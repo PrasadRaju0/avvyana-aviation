@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import FlightAvailability from './FlightAvailability'
 import LeaveRequest from './LeaveRequest'
-import Dashboard from './Dashboard'
+import Dashboard, { getNightCurrencyStatus } from './Dashboard'
 import AdminLeaveRequests from './AdminLeaveRequests'
 import QueueMembersPage from './QueueMembersPage'
 import SplashScreen from './SplashScreen'
@@ -96,38 +96,16 @@ function LoginPage() {
 
   return (
     <div className="login-page">
-      <marquee className="login-marquee" behavior="scroll" direction="left" scrollamount="8">
+      <marquee className="login-marquee" behavior="scroll" direction="left" scrollamount="7">
         <span className="marquee-aircraft" aria-hidden="true">✈</span>{' '}
-        <span className="marquee-saffron">India's only</span>{' '}
-        <span className="marquee-white">A-Rated</span>{' '}
-        <span className="marquee-green">Flying Training Academy</span>{' '}
+        <span className="marquee-saffron">INDIA&apos;S ONLY</span>{' '}
+        <span className="marquee-white">A-RATED</span>{' '}
+        <span className="marquee-green">FLYING TRAINING ACADEMY</span>{' '}
         <span className="marquee-aircraft" aria-hidden="true">✈</span>
       </marquee>
-      <div className="login-hero">
-        <div className="hero-overlay"></div>
-
-        <div className="hero-content">
-          <div className="brand-mark">Avyanna</div>
-          <div className="brand-subtitle">AVIATION ACADEMY</div>
-          <div className="hero-line"></div>
-
-          <h1 className="hero-title">
-            <span>Flight Training</span>
-            <span>Starts Here</span>
-          </h1>
-
-          <p className="hero-description">
-            Professional flight training for the next generation of exceptional pilots.
-          </p>
-
-        </div>
-
-        <div className="hero-footer">© 2026 Avyanna Aviation Academy</div>
-      </div>
 
       <div className="login-panel">
         <div className="login-box">
-          <div className="mobile-logo">Avyanna</div>
 
           <div className="welcome">
             <h2>Welcome back.</h2>
@@ -500,8 +478,11 @@ function ForgotPasswordPage() {
 
   return (
     <main className="admin-page"><div className="admin-card">
-      <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
-      <span className="admin-label">STUDENT PORTAL</span><h1>Reset student password</h1>
+      <div className="admin-portal-badge-pill student-badge-pill">
+        <span className="live-pulsing-dot" style={{ background: '#0284c7', boxShadow: '0 0 8px #0284c7' }} />
+        <span>STUDENT SERVICES</span>
+      </div>
+      <h1>Reset student password</h1>
       <p>Verify your SPL Number and email, then enter the OTP sent by email.</p>
       <form onSubmit={otpVerified ? handleUpdatePassword : otpSent ? handleVerifyOtp : handleSendOtp}>
         <div className="admin-form-group"><label>SPL NUMBER *</label><input value={form.splNumber} onChange={(event) => setForm({ ...form, splNumber: sanitizeSplNumber(event.target.value) })} pattern="[A-Z0-9]+" title="SPL Number must contain both letters and numbers, for example AAPLK000." required /><small className="field-hint">Use letters and numbers, for example AAPLK000.</small></div>
@@ -532,8 +513,11 @@ function StudentAccountForm({ title, submitLabel, form, setForm, error, onSubmit
   const updateMobileNumber = (e) => setForm({ ...form, mobileNumber: sanitizeMobileNumber(e.target.value) })
   return (
     <main className="admin-page"><div className="admin-card">
-      <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
-      <span className="admin-label">STUDENT PORTAL</span><h1>{title}</h1>
+      <div className="admin-portal-badge-pill student-badge-pill">
+        <span className="live-pulsing-dot" style={{ background: '#0284c7', boxShadow: '0 0 8px #0284c7' }} />
+        <span>STUDENT SERVICES</span>
+      </div>
+      <h1>{title}</h1>
       <form onSubmit={onSubmit}>
         {!reset && <div className="admin-form-group"><label>FULL NAME *</label><input value={form.name} onChange={update('name')} pattern="[A-Za-z]+(?:[ '][A-Za-z]+)*" title="Enter your full name using letters and spaces only." required /></div>}
         <div className="admin-form-group"><label>SPL NUMBER *</label><input value={form.splNumber} onChange={updateSplNumber} pattern="[A-Z0-9]+" title="SPL Number must contain both letters and numbers, for example AAPLK000." required /><small className="field-hint">Use letters and numbers, for example AAPLK000.</small></div>
@@ -556,6 +540,50 @@ function StudentAccountForm({ title, submitLabel, form, setForm, error, onSubmit
 
 function AdminPortalHome() {
   const navigate = useNavigate()
+  const storedAdminName = localStorage.getItem('adminName') || 'Administrator'
+  const storedAdminRole = localStorage.getItem('adminRole') || 'CFI'
+
+  // Live overview metrics for Admin Hub
+  const [stats, setStats] = useState({
+    activeSubmissions: 0,
+    queuedCount: 0,
+    pendingLeaves: 0,
+    nightAlertCount: 0,
+    totalCadets: 0,
+  })
+
+  useEffect(() => {
+    try {
+      const allCpl = JSON.parse(localStorage.getItem('all_cpl_experiences') || '{}')
+      const submissions = JSON.parse(localStorage.getItem('flightSubmissions') || '[]')
+      const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
+      const leaves = JSON.parse(localStorage.getItem('leaveRequests') || '[]')
+
+      const allStudentIds = Array.from(new Set([
+        ...submissions.map((s) => s.studentId),
+        ...accounts.map((a) => a.splNumber),
+        ...Object.keys(allCpl),
+      ])).filter(Boolean)
+
+      const expiringOrExpired = allStudentIds.filter((splId) => {
+        const studentCpl = allCpl[splId] || JSON.parse(localStorage.getItem(`cpl_experience_${splId}`) || 'null')
+        const status = getNightCurrencyStatus(studentCpl)
+        return status.isExpiringSoon || status.isExpired
+      })
+
+      const activeSubs = submissions.filter((s) => s.availability === 'available')
+      const queued = submissions.filter((s) => s.queue_status === 'queued' || s.queueStatus === 'queued')
+      const pendingLv = leaves.filter((l) => l.status === 'Pending approval')
+
+      setStats({
+        activeSubmissions: activeSubs.length,
+        queuedCount: queued.length,
+        pendingLeaves: pendingLv.length,
+        nightAlertCount: expiringOrExpired.length,
+        totalCadets: allStudentIds.length,
+      })
+    } catch {}
+  }, [])
 
   const handleLogout = () => {
     localStorage.removeItem('adminLoggedIn')
@@ -565,26 +593,155 @@ function AdminPortalHome() {
   }
 
   return (
-    <main className="admin-page">
-      <div className="admin-card admin-portal-home">
-        <div className="brand-mark">Avyanna</div>
-        <div className="brand-subtitle">AVIATION ACADEMY</div>
-        <span className="admin-label">ADMIN PORTAL</span>
-        <h1>Choose a workspace</h1>
-        <p>Select the area you want to manage.</p>
+    <main className="admin-page admin-hub-page">
+      <div className="admin-hub-glow" />
+      
+      <div className="admin-hub-container">
+        {/* Top Executive Header */}
+        <header className="admin-hub-header">
+          <div className="admin-hub-brand-block">
+            <div className="admin-hub-logo-circle">
+              <span className="hub-plane-icon">✈</span>
+            </div>
+            <div>
+              <div className="admin-hub-brand-title">AVYANNA AVIATION ACADEMY</div>
+              <div className="admin-hub-brand-badge">FLIGHT OPERATIONS COMMAND • {storedAdminRole} PORTAL</div>
+            </div>
+          </div>
 
-        <div className="admin-portal-options">
-          <button type="button" className="admin-portal-option" onClick={() => navigate('/admin/cadets-availability')}>
-            <span className="admin-portal-option-heading"><span className="admin-portal-icon" aria-hidden="true">✈</span><strong>Cadets Availability</strong></span>
-            <span>Review flight status, submissions, and student details.</span>
-          </button>
-          <button type="button" className="admin-portal-option" onClick={() => navigate('/admin/leave-requests')}>
-            <span className="admin-portal-option-heading"><span className="admin-portal-icon" aria-hidden="true">▣</span><strong>Leave Approvals</strong></span>
-            <span className="admin-portal-note">Note: Leaves can be approved by CFI/DCFI only.</span>
-          </button>
+          <div className="admin-hub-profile-chip">
+            <div className="admin-hub-avatar">{storedAdminRole}</div>
+            <div className="admin-hub-user-meta">
+              <strong>{storedAdminName}</strong>
+              <small>Authorized Flight Operations Officer</small>
+            </div>
+            <button type="button" className="btn-admin-hub-logout" onClick={handleLogout} title="Sign out of Admin Portal">
+              LOG OUT
+            </button>
+          </div>
+        </header>
+
+        {/* Live Metrics Ribbon */}
+        <section className="admin-hub-stats-ribbon">
+          <div className="hub-stat-card">
+            <div className="hub-stat-num">{stats.activeSubmissions}</div>
+            <div className="hub-stat-label">Available Pilots Today</div>
+          </div>
+          <div className="hub-stat-card">
+            <div className="hub-stat-num stat-queued">{stats.queuedCount}</div>
+            <div className="hub-stat-label">Cadets In Active Queue</div>
+          </div>
+          <div className="hub-stat-card">
+            <div className="hub-stat-num stat-leaves">{stats.pendingLeaves}</div>
+            <div className="hub-stat-label">Pending Leave Requests</div>
+          </div>
+          <div className="hub-stat-card">
+            <div className="hub-stat-num stat-night">{stats.nightAlertCount}</div>
+            <div className="hub-stat-label">Night Currency Alerts</div>
+          </div>
+        </section>
+
+        {/* Interactive Workspace Modules */}
+        <div className="admin-hub-workspaces-title">
+          <h2>Operations Command Center</h2>
+          <p>Select a dedicated workspace module to manage sorties, clearances, and training records.</p>
         </div>
 
-        <button type="button" className="admin-return-button" onClick={handleLogout}>LOG OUT</button>
+        <div className="admin-hub-modules-grid">
+          {/* Module 1: Cadets Availability & Sortie Management */}
+          <article 
+            className="admin-hub-module-card card-cadets-ops"
+            onClick={() => navigate('/admin/cadets-availability')}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="hub-module-top">
+              <div className="hub-module-icon icon-flight-ops">✈</div>
+              {stats.nightAlertCount > 0 ? (
+                <span className="hub-module-badge badge-warning">
+                  ⚠️ {stats.nightAlertCount} Night Expiring
+                </span>
+              ) : (
+                <span className="hub-module-badge badge-live">Live Roster</span>
+              )}
+            </div>
+            <div className="hub-module-body">
+              <h3>Cadets Availability &amp; Sorties</h3>
+              <p>Review student daily availability, aircraft type selections (PA-28 / DA42), real-time queue assignments, and 30-day Night Flying currency compliance.</p>
+              <div className="hub-module-indicators">
+                <span className="hub-indicator"><strong>{stats.activeSubmissions}</strong> Available for Flight</span>
+                <span className="hub-indicator"><strong>{stats.queuedCount}</strong> Queued Sorties</span>
+              </div>
+            </div>
+            <div className="hub-module-footer">
+              <span>Open Cadets Availability</span>
+              <span className="hub-arrow">→</span>
+            </div>
+          </article>
+
+          {/* Module 2: Leave & Check-in Approvals */}
+          <article 
+            className="admin-hub-module-card card-leaves-ops"
+            onClick={() => navigate('/admin/leave-requests')}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="hub-module-top">
+              <div className="hub-module-icon icon-leave-ops">📋</div>
+              {stats.pendingLeaves > 0 ? (
+                <span className="hub-module-badge badge-danger">
+                  {stats.pendingLeaves} Awaiting Decision
+                </span>
+              ) : (
+                <span className="hub-module-badge badge-clean">All Clear</span>
+              )}
+            </div>
+            <div className="hub-module-body">
+              <h3>Leave Approvals &amp; Returns</h3>
+              <p>Process official leave applications, grant CFI / DCFI digital authorizations, enforce non-flying days, and track campus return reporting.</p>
+              <div className="hub-module-indicators">
+                <span className="hub-indicator"><strong>{stats.pendingLeaves}</strong> Pending Approvals</span>
+                <span className="hub-indicator"><strong>CFI / DCFI</strong> Direct Authorization</span>
+              </div>
+            </div>
+            <div className="hub-module-footer">
+              <span>Open Leave Management</span>
+              <span className="hub-arrow">→</span>
+            </div>
+          </article>
+
+          {/* Module 3: Live Exercise Queue */}
+          <article 
+            className="admin-hub-module-card card-queue-ops"
+            onClick={() => navigate('/admin/queue-members')}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="hub-module-top">
+              <div className="hub-module-icon icon-queue-ops">⏱</div>
+              <span className="hub-module-badge badge-neutral">First-Come, First-Served</span>
+            </div>
+            <div className="hub-module-body">
+              <h3>Live Sortie Queue</h3>
+              <p>Monitor priority queue positionings by exercise (CCTS, GF, IF, X-Country, Night) and auto-dispatch waiting cadets into active flying slots.</p>
+              <div className="hub-module-indicators">
+                <span className="hub-indicator"><strong>{stats.queuedCount}</strong> Waiting In Queue</span>
+                <span className="hub-indicator"><strong>Live</strong> Slot Dispatch</span>
+              </div>
+            </div>
+            <div className="hub-module-footer">
+              <span>Open Sortie Queue</span>
+              <span className="hub-arrow">→</span>
+            </div>
+          </article>
+        </div>
+
+        {/* Quick Return */}
+        <div className="admin-hub-bottom-actions">
+          <button type="button" className="btn-hub-student-return" onClick={() => navigate('/')}>
+            ← Switch to Cadet Portal Login
+          </button>
+        </div>
       </div>
     </main>
   )
@@ -633,9 +790,10 @@ function AdminPage() {
   return (
     <main className="admin-page">
       <div className="admin-card">
-        <div className="brand-mark">Avyanna</div>
-        <div className="brand-subtitle">AVIATION ACADEMY</div>
-        <span className="admin-label">ADMIN PORTAL</span>
+        <div className="admin-portal-badge-pill">
+          <span className="live-pulsing-dot" style={{ background: '#0284c7', boxShadow: '0 0 8px #0284c7' }} />
+          <span>ADMIN PORTAL</span>
+        </div>
         <h1>Administrator sign in</h1>
         <p>Sign in with your separate Admin account.</p>
 
@@ -714,8 +872,11 @@ function AdminAccountForm({ title, submitLabel, form, setForm, error, onSubmit, 
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
   return (
     <main className="admin-page"><div className="admin-card">
-      <div className="brand-mark">Avyanna</div><div className="brand-subtitle">AVIATION ACADEMY</div>
-      <span className="admin-label">ADMIN PORTAL</span><h1>{title}</h1>
+      <div className="admin-portal-badge-pill">
+        <span className="live-pulsing-dot" style={{ background: '#0284c7', boxShadow: '0 0 8px #0284c7' }} />
+        <span>ADMIN PORTAL</span>
+      </div>
+      <h1>{title}</h1>
       <form onSubmit={onSubmit}>
         {!reset && <div className="admin-form-group"><label>FULL NAME</label><input value={form.name} onChange={update('name')} pattern="[A-Za-z]+(?:[ '][A-Za-z]+)*" title="Enter your full name using letters and spaces only." required /></div>}
         <div className="admin-form-group"><label>USERNAME</label><input value={form.username} onChange={update('username')} required /></div>

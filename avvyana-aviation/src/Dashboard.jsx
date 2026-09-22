@@ -34,11 +34,112 @@ const allExercises = [
   'Multi Checks',
 ]
 
+function addMonths(dateString, months) {
+  if (!dateString) return null
+  const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return null
+  date.setMonth(date.getMonth() + months)
+  return date.toISOString().slice(0, 10)
+}
+
+export function getNightCurrencyStatus(cplData) {
+  const nightRecord = cplData?.['night-pic']
+  const flightDate = nightRecord?.date
+  const hours = nightRecord?.hours
+
+  if (!flightDate && !hours) {
+    return {
+      status: 'not_logged',
+      label: 'Not Logged',
+      daysRemaining: null,
+      expiryDate: null,
+      flightDate: null,
+      hours: 0,
+      isExpiringSoon: false,
+      isExpired: false,
+    }
+  }
+
+  if (!flightDate) {
+    return {
+      status: 'no_date',
+      label: 'Date Missing',
+      daysRemaining: null,
+      expiryDate: null,
+      flightDate: null,
+      hours: Number(hours) || 0,
+      isExpiringSoon: false,
+      isExpired: false,
+    }
+  }
+
+  const expiryDate = addMonths(flightDate, 6)
+  if (!expiryDate) {
+    return {
+      status: 'invalid',
+      label: 'Invalid Date',
+      daysRemaining: null,
+      expiryDate: null,
+      flightDate,
+      hours: Number(hours) || 0,
+      isExpiringSoon: false,
+      isExpired: false,
+    }
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const exp = new Date(`${expiryDate}T00:00:00`)
+  const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDays <= 0) {
+    return {
+      status: 'expired',
+      label: `Expired (${Math.abs(diffDays)}d ago)`,
+      shortLabel: 'Expired',
+      daysRemaining: diffDays,
+      expiryDate,
+      flightDate,
+      hours: Number(hours) || 0,
+      isExpiringSoon: false,
+      isExpired: true,
+    }
+  }
+
+  if (diffDays <= 30) {
+    return {
+      status: 'expiring_soon',
+      label: `Expires in ${diffDays}d (${expiryDate})`,
+      shortLabel: `${diffDays}d left`,
+      daysRemaining: diffDays,
+      expiryDate,
+      flightDate,
+      hours: Number(hours) || 0,
+      isExpiringSoon: true,
+      isExpired: false,
+    }
+  }
+
+  return {
+    status: 'valid',
+    label: `Valid (${diffDays}d left - ${expiryDate})`,
+    shortLabel: 'Valid',
+    daysRemaining: diffDays,
+    expiryDate,
+    flightDate,
+    hours: Number(hours) || 0,
+    isExpiringSoon: false,
+    isExpired: false,
+  }
+}
+
 function Dashboard() {
   const navigate = useNavigate()
   const [searchSplNumber, setSearchSplNumber] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedExercise, setSelectedExercise] = useState('')
+  const [nightExpiryFilter, setNightExpiryFilter] = useState(false)
+  const [showNightExpiryModal, setShowNightExpiryModal] = useState(false)
   const [leaveTypeFilter, setLeaveTypeFilter] = useState('all')
   const [showLeaveTable, setShowLeaveTable] = useState(false)
   const [databaseSubmissions, setDatabaseSubmissions] = useState(null)
@@ -551,13 +652,50 @@ function Dashboard() {
       return firstSubmittedTime - secondSubmittedTime
   }
 
+  // Night Flying Currency Calculation for All Cadets
+  const allCplExperiences = JSON.parse(localStorage.getItem('all_cpl_experiences') || '{}')
+  
+  const getStudentNightCurrency = (studentId) => {
+    const studentCpl = allCplExperiences[studentId] || 
+      JSON.parse(localStorage.getItem(`cpl_experience_${studentId}`) || 'null')
+    return getNightCurrencyStatus(studentCpl)
+  }
+
+  // Find all distinct cadets across submissions and accounts to evaluate night currency alerts
+  const allDistinctStudentIds = Array.from(new Set([
+    ...displayedSubmissions.map((s) => s.studentId),
+    ...studentAccounts.map((a) => a.splNumber),
+    ...Object.keys(allCplExperiences),
+  ])).filter(Boolean)
+
+  const cadetNightAlertList = allDistinctStudentIds.map((splId) => {
+    const account = studentAccounts.find((a) => a.splNumber === splId)
+    const name = account?.fullName || displayedSubmissions.find((s) => s.studentId === splId)?.studentName || splId
+    const nightStatus = getStudentNightCurrency(splId)
+    return {
+      studentId: splId,
+      studentName: name,
+      ...nightStatus,
+    }
+  }).filter((cadet) => cadet.isExpiringSoon || cadet.isExpired)
+
+  const nightExpiringSoonCount = cadetNightAlertList.filter((cadet) => cadet.isExpiringSoon).length
+  const nightExpiredCount = cadetNightAlertList.filter((cadet) => cadet.isExpired).length
+
   const queuedSubmissions = filteredSubmissions
     .filter((submission) => submission.availability === 'available' && submission.queueStatus === 'queued')
     .sort(sortQueueByExerciseAndAge)
 
   const availableSubmissions = filteredSubmissions
-    .filter((submission) => submission.availability === 'available'
-      && !['queued', 'completed'].includes(submission.queueStatus))
+    .filter((submission) => {
+      const isBaseAvailable = submission.availability === 'available' && !['queued', 'completed'].includes(submission.queueStatus)
+      if (!isBaseAvailable) return false
+      if (nightExpiryFilter) {
+        const nightStatus = getStudentNightCurrency(submission.studentId)
+        return nightStatus.isExpiringSoon || nightStatus.isExpired
+      }
+      return true
+    })
     .sort(sortQueueByExerciseAndAge)
   const leaveSubmissions = filteredSubmissions.filter(
     (submission) => ['seventh-day', 'not-available'].includes(submission.availability)
@@ -724,9 +862,40 @@ function Dashboard() {
         </div>
 
         <div className="dashboard-header-actions">
-          <span>{adminRole} PORTAL</span>
+          <div className="admin-nav-links">
+            <button
+              type="button"
+              className="btn-admin-nav-item active"
+              onClick={() => navigate('/admin/cadets-availability')}
+            >
+              ✈ Cadets Availability
+            </button>
+            <button
+              type="button"
+              className="btn-admin-nav-item"
+              onClick={() => navigate('/admin/leave-requests')}
+            >
+              📋 Leave Approvals
+            </button>
+            <button
+              type="button"
+              className="btn-admin-nav-item"
+              onClick={() => navigate('/admin/queue-members')}
+            >
+              ⏱ Sortie Queue
+            </button>
+            <button
+              type="button"
+              className="btn-admin-nav-item"
+              onClick={() => navigate('/admin')}
+            >
+              ▦ Hub
+            </button>
+          </div>
+          <span className="admin-role-tag">{adminRole} PORTAL</span>
           <button
             type="button"
+            className="btn-admin-logout"
             onClick={() => {
               localStorage.removeItem('adminLoggedIn')
               localStorage.removeItem('adminRole')
@@ -752,65 +921,295 @@ function Dashboard() {
       )}
 
       <section className="dashboard-content">
-        <div className="dashboard-heading">
-          <div>
-            <span className="dashboard-label">FLIGHT OPERATIONS</span>
-            <h1>Student availability</h1>
-            <p>Review submitted flying availability and training details.</p>
+        {/* Executive Stats Overview Ribbon */}
+        <div className="admin-quick-stats-grid">
+          <div className="admin-stat-card">
+            <div className="stat-card-icon stat-icon-blue">✈</div>
+            <div className="stat-card-content">
+              <span className="stat-card-number">{availableSubmissions.length}</span>
+              <span className="stat-card-label">Available for Flying</span>
+            </div>
           </div>
-          <strong>{filteredSubmissions.length} SUBMISSIONS</strong>
+          <div className="admin-stat-card">
+            <div className="stat-card-icon stat-icon-amber">⏱</div>
+            <div className="stat-card-content">
+              <span className="stat-card-number">{queuedSubmissions.length}</span>
+              <span className="stat-card-label">Active in Queue</span>
+            </div>
+          </div>
+          <div className="admin-stat-card">
+            <div className="stat-card-icon stat-icon-purple">📋</div>
+            <div className="stat-card-content">
+              <span className="stat-card-number">{leaveSummaryRows.length}</span>
+              <span className="stat-card-label">Leaves &amp; 7th Days</span>
+            </div>
+          </div>
+          <div className="admin-stat-card">
+            <div className={`stat-card-icon ${nightExpiringSoonCount > 0 || nightExpiredCount > 0 ? 'stat-icon-red' : 'stat-icon-green'}`}>🌙</div>
+            <div className="stat-card-content">
+              <span className="stat-card-number">{cadetNightAlertList.length}</span>
+              <span className="stat-card-label">Night Currency Alerts</span>
+            </div>
+          </div>
         </div>
 
-        <div className="dashboard-actions-bar">
-          <button
-            type="button"
-            className="btn-queue-members"
-            onClick={() => {
-              const queueState = JSON.stringify(queuedSubmissions)
-              sessionStorage.setItem('queueMembersData', queueState)
-              const newWindow = window.open('/admin/queue-members', '_blank', 'noopener,noreferrer')
-              if (newWindow) {
-                newWindow.sessionStorage.setItem('queueMembersData', queueState)
-              }
-            }}
-            title="View students currently waiting in the queue"
-          >
-            {showQueueMembers ? 'HIDE QUEUE MEMBERS' : 'QUEUE MEMBERS'}{queuedSubmissions.length > 0 ? ` (${queuedSubmissions.length})` : ''}
-          </button>
-          <button
-            type="button"
-            className="btn-leave-summary"
-            onClick={() => {
-              setShowLeaveSummarySection((isVisible) => {
-                const nextVisibility = !isVisible
-                if (nextVisibility) {
-                  window.setTimeout(() => leaveSummarySectionRef.current?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start',
-                  }), 0)
-                }
-                return nextVisibility
-              })
-            }}
-            title="View leave and unavailable students"
-          >
-            {showLeaveSummarySection ? 'HIDE LEAVE SUMMARY' : 'LEAVE & UNAVAILABLE'}
-          </button>
-          <button 
-            className="btn-clear-submissions"
-            onClick={handleClearSubmissions}
-            title="Delete all flight submissions (keeps student accounts)"
-          >
-            Clear submissions
-          </button>
-          <button 
-            className="btn-danger"
-            onClick={handleDeleteAllData}
-            title="Delete all records from the database"
-          >
-            Delete all DB data
-          </button>
+        <div className="dashboard-heading">
+          <div>
+            <span className="dashboard-label">FLIGHT OPERATIONS MANAGEMENT</span>
+            <h1>Cadets Flight Availability</h1>
+            <p>Monitor daily pilot availability, live exercise queue slots, and DGCA currency compliance.</p>
+          </div>
+          <strong>{filteredSubmissions.length} TOTAL SUBMISSIONS</strong>
         </div>
+
+        {/* Premium Action Control Toolbar with Right-Aligned Search */}
+        <div className="dashboard-control-toolbar">
+          <div className="toolbar-left-group">
+            <button
+              type="button"
+              className="btn-toolbar-action btn-toolbar-queue"
+              onClick={() => {
+                const queueState = JSON.stringify(queuedSubmissions)
+                sessionStorage.setItem('queueMembersData', queueState)
+                const newWindow = window.open('/admin/queue-members', '_blank', 'noopener,noreferrer')
+                if (newWindow) {
+                  newWindow.sessionStorage.setItem('queueMembersData', queueState)
+                }
+              }}
+              title="Open Sortie Queue Management"
+            >
+              <span className="toolbar-btn-icon">⏱</span>
+              <span>Queue Members</span>
+              {queuedSubmissions.length > 0 && (
+                <span className="toolbar-badge-count">{queuedSubmissions.length}</span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className={`btn-toolbar-action btn-toolbar-leave ${showLeaveSummarySection ? 'is-active' : ''}`}
+              onClick={() => {
+                setShowLeaveSummarySection((isVisible) => {
+                  const nextVisibility = !isVisible
+                  if (nextVisibility) {
+                    window.setTimeout(() => leaveSummarySectionRef.current?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'start',
+                    }), 0)
+                  }
+                  return nextVisibility
+                })
+              }}
+              title="Toggle leave and unavailable cadets section"
+            >
+              <span className="toolbar-btn-icon">📋</span>
+              <span>{showLeaveSummarySection ? 'Hide Leave Summary' : 'Leave & Unavailable'}</span>
+            </button>
+
+            {cadetNightAlertList.length > 0 && (
+              <button
+                type="button"
+                className={`btn-toolbar-action btn-toolbar-night blinking-night-btn ${showNightExpiryModal ? 'is-active' : ''}`}
+                onClick={() => setShowNightExpiryModal(true)}
+                title="Inspect Night Flying Currency Expiry Details"
+              >
+                <span className="blinking-dot"></span>
+                <span className="toolbar-btn-icon">🌙</span>
+                <span>Night Expiring</span>
+                <span className="toolbar-badge-warning">{cadetNightAlertList.length}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="toolbar-right-group">
+            {/* Right-Aligned Integrated Search Field */}
+            <div className="toolbar-search-box">
+              <span className="toolbar-search-icon">🔍</span>
+              <input
+                id="admin-spl-search"
+                type="search"
+                className="toolbar-search-input"
+                placeholder="Search SPL or Cadet Name..."
+                value={searchSplNumber}
+                onChange={(e) => setSearchSplNumber(e.target.value)}
+              />
+              {searchSplNumber && (
+                <button
+                  type="button"
+                  className="toolbar-search-clear"
+                  onClick={() => setSearchSplNumber('')}
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <button 
+              type="button"
+              className="btn-toolbar-subtle btn-clear-sub"
+              onClick={handleClearSubmissions}
+              title="Clear today's flight submissions (student accounts remain safe)"
+            >
+              Clear Submissions
+            </button>
+            <button 
+              type="button"
+              className="btn-toolbar-danger btn-reset-db"
+              onClick={handleDeleteAllData}
+              title="Delete all records from the database"
+            >
+              Reset Database
+            </button>
+          </div>
+        </div>
+
+        {/* Night Currency Expiry Details Modal */}
+        {showNightExpiryModal && (
+          <div className="night-modal-overlay" onClick={() => setShowNightExpiryModal(false)}>
+            <div className="night-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="night-modal-header">
+                <div className="night-modal-title-wrap">
+                  <span className="night-modal-icon">🌙</span>
+                  <div>
+                    <h3>DGCA Night Currency Expiry Alert</h3>
+                    <p>Cadets whose 6-month night flying validity is expiring within 30 days or has expired</p>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  className="night-modal-close"
+                  onClick={() => setShowNightExpiryModal(false)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="night-modal-stats">
+                <div className="night-modal-stat-pill stat-expiring">
+                  <span className="stat-num">{nightExpiringSoonCount}</span>
+                  <span className="stat-lbl">Expiring Soon (&le; 30 Days)</span>
+                </div>
+                <div className="night-modal-stat-pill stat-expired">
+                  <span className="stat-num">{nightExpiredCount}</span>
+                  <span className="stat-lbl">Expired Validity</span>
+                </div>
+                <div className="night-modal-stat-pill stat-total">
+                  <span className="stat-num">{cadetNightAlertList.length}</span>
+                  <span className="stat-lbl">Total Cadets Requiring Night Flight</span>
+                </div>
+              </div>
+
+              <div className="night-modal-body">
+                <table className="night-details-table">
+                  <thead>
+                    <tr>
+                      <th>SPL NUMBER</th>
+                      <th>CADET NAME</th>
+                      <th>LAST NIGHT FLIGHT</th>
+                      <th>EXPIRY DATE (6 MOS)</th>
+                      <th>REMAINING TIME</th>
+                      <th>CURRENCY STATUS</th>
+                      <th>ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cadetNightAlertList.map((cadet) => (
+                      <tr key={cadet.studentId} className={cadet.isExpired ? 'row-expired' : 'row-warning'}>
+                        <td className="cadet-spl-col">
+                          <strong>{cadet.studentId}</strong>
+                        </td>
+                        <td className="cadet-name-col">
+                          {cadet.studentName}
+                        </td>
+                        <td>
+                          {cadet.lastNightFlightDate ? (
+                            <span className="night-date-badge">
+                              {new Date(cadet.lastNightFlightDate).toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </span>
+                          ) : (
+                            <span className="no-record-tag">No flight logged</span>
+                          )}
+                        </td>
+                        <td>
+                          {cadet.expiryDate ? (
+                            <strong className={cadet.isExpired ? 'date-expired' : 'date-expiring'}>
+                              {new Date(cadet.expiryDate).toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </strong>
+                          ) : (
+                            <span className="no-record-tag">Needs Night PIC</span>
+                          )}
+                        </td>
+                        <td>
+                          {cadet.isExpired ? (
+                            <span className="days-expired-text">Expired ({Math.abs(cadet.daysRemaining)}d ago)</span>
+                          ) : cadet.daysRemaining !== null ? (
+                            <span className="days-remaining-text">
+                              <strong>{cadet.daysRemaining}</strong> days left
+                            </span>
+                          ) : (
+                            <span className="days-none-text">-</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge-night-currency ${cadet.isExpired ? 'badge-night-expired' : 'badge-night-warning'}`}>
+                            {cadet.isExpired ? '❌' : '⚠️'} {cadet.label}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-quick-filter-cadet"
+                            onClick={() => {
+                              setSearchSplNumber(cadet.studentId)
+                              setShowNightExpiryModal(false)
+                            }}
+                            title="Filter dashboard for this student"
+                          >
+                            Inspect Cadet
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="night-modal-footer">
+                <div className="night-dgca-rule-note">
+                  ℹ️ <strong>DGCA Rule Requirement:</strong> Night currency requires at least 1 PIC night takeoff & landing within preceding 6 months.
+                </div>
+                <div className="night-modal-footer-actions">
+                  <button
+                    type="button"
+                    className={`btn-toggle-filter-table ${nightExpiryFilter ? 'active' : ''}`}
+                    onClick={() => {
+                      setNightExpiryFilter((prev) => !prev)
+                      setShowNightExpiryModal(false)
+                    }}
+                  >
+                    {nightExpiryFilter ? 'Show All Available Cadets' : 'Filter Table for Expiring Cadets'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-close-modal"
+                    onClick={() => setShowNightExpiryModal(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showLeaveAccessPrompt && (
           <div className="leave-access-panel">
@@ -850,68 +1249,86 @@ function Dashboard() {
           </div>
         )}
 
-        <div className="dashboard-search">
-          <label htmlFor="admin-spl-search">SEARCH BY SPL NUMBER OR NAME</label>
-          <div className="dashboard-filter-row">
-            <div className="dashboard-filter-field">
-              <input
-                id="admin-spl-search"
-                type="search"
-                placeholder="Enter SPL Number or student name"
-                value={searchSplNumber}
-                onChange={(e) => setSearchSplNumber(e.target.value)}
-              />
-            </div>
-            {(searchSplNumber || selectedDate || selectedExercise) && (
-              <button
-                type="button"
-                className="dashboard-clear-button"
-                onClick={() => {
-                  setSearchSplNumber('')
-                  setSelectedDate('')
-                  setSelectedExercise('')
-                }}
-              >
-                CLEAR
-              </button>
-            )}
-          </div>
-        </div>
+        {/* Search Results Table (Shown when searching) */}
 
         {searchSplNumber.trim() && searchResultRows.length > 0 && (
           <div className="search-result-table-wrapper">
+            <div className="search-result-table-header">
+              <h3>Direct Cadet Search Results ({searchResultRows.length})</h3>
+            </div>
             <table className="search-result-table">
               <thead>
                 <tr>
-                  <th>SPL Number</th>
-                  <th>Name</th>
-                  <th>Not available</th>
-                  <th>Leave taken</th>
-                  <th>Total leaves</th>
-                  <th>Total hours</th>
-                  <th>Delete</th>
+                  <th>SPL NUMBER</th>
+                  <th>CADET NAME</th>
+                  <th>NOT AVAILABLE</th>
+                  <th>LEAVES TAKEN</th>
+                  <th>TOTAL LEAVES</th>
+                  <th>TOTAL FLYING</th>
+                  <th>NIGHT CURRENCY</th>
+                  <th>CADET ACTION</th>
                 </tr>
               </thead>
               <tbody>
-                {searchResultRows.map((row) => (
+                {searchResultRows.map((row) => {
+                  const nightStatus = getStudentNightCurrency(row.studentId)
+                  return (
                   <tr key={row.studentId}>
-                    <td><strong>{row.studentId}</strong></td>
-                    <td>{row.studentName}</td>
-                    <td>{row.notAvailableCount}</td>
-                    <td>{row.leaveTaken}</td>
-                    <td><strong>{row.totalLeaves}</strong></td>
-                    <td>{row.totalFlyingHours} hrs</td>
+                    <td className="search-spl-cell">
+                      <strong>{row.studentId}</strong>
+                    </td>
+                    <td className="search-name-cell">
+                      <span>{row.studentName}</span>
+                    </td>
+                    <td>
+                      <span className="count-pill pill-subtle">{row.notAvailableCount}</span>
+                    </td>
+                    <td>
+                      <span className="count-pill pill-subtle">{row.leaveTaken}</span>
+                    </td>
+                    <td>
+                      <span className="count-pill pill-leaves">{row.totalLeaves} days</span>
+                    </td>
+                    <td>
+                      <span className="flying-hours-badge">
+                        ✈ {row.totalFlyingHours} hrs
+                      </span>
+                    </td>
+                    <td>
+                      {nightStatus.status === 'expiring_soon' && (
+                        <span className="badge-night-currency badge-night-warning">
+                          ⚠️ {nightStatus.shortLabel}
+                        </span>
+                      )}
+                      {nightStatus.status === 'expired' && (
+                        <span className="badge-night-currency badge-night-expired">
+                          ❌ Expired
+                        </span>
+                      )}
+                      {nightStatus.status === 'valid' && (
+                        <span className="badge-night-currency badge-night-valid">
+                          ✓ Valid ({nightStatus.daysRemaining}d)
+                        </span>
+                      )}
+                      {['not_logged', 'no_date', 'invalid'].includes(nightStatus.status) && (
+                        <span className="badge-night-currency badge-night-na">
+                          — No Night PIC
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <button
                         type="button"
-                        className="btn-danger btn-delete-row"
+                        className="btn-delete-cadet-modern"
                         onClick={() => handleDeleteStudentFromDatabase(row.studentId)}
+                        title={`Delete ${row.studentName} from database`}
                       >
-                        Delete
+                        🗑 Delete Cadet
                       </button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -1103,15 +1520,18 @@ function Dashboard() {
                   <th>Waiting for</th>
                   <th>Waiting days</th>
                   <th>Total hours</th>
+                  <th>Night Currency</th>
                   <th>Queue action</th>
                 </tr>
               </thead>
               <tbody>
                 {availableSubmissions.length > 0 ? (
-                  availableSubmissions.map((submission, index) => (
+                  availableSubmissions.map((submission, index) => {
+                    const nightStatus = getStudentNightCurrency(submission.studentId)
+                    return (
                     <tr
                       key={`${submission.studentId}-available-${submission.submittedAt}-${index}`}
-                      className={submission.queueStatus === 'queued' ? 'queue-row-active' : ''}
+                      className={`${submission.queueStatus === 'queued' ? 'queue-row-active' : ''} ${nightStatus.isExpiringSoon ? 'row-night-warning' : nightStatus.isExpired ? 'row-night-expired' : ''}`}
                     >
                       <td>{formatSubmissionDate(submission.flightDate || submission.submittedAt)}</td>
                       <td><strong>{getStudentDetails(submission)}</strong></td>
@@ -1122,6 +1542,28 @@ function Dashboard() {
                         </strong>
                       </td>
                       <td>{submission.totalFlyingHours} hrs</td>
+                      <td>
+                        {nightStatus.status === 'expiring_soon' && (
+                          <span className="badge-night-currency badge-night-warning" title={`Night Flying Date: ${nightStatus.flightDate} | Expires: ${nightStatus.expiryDate} (under 30 days left)`}>
+                            ⚠️ {nightStatus.shortLabel}
+                          </span>
+                        )}
+                        {nightStatus.status === 'expired' && (
+                          <span className="badge-night-currency badge-night-expired" title={`Night Flying Date: ${nightStatus.flightDate} | Expired: ${nightStatus.expiryDate}`}>
+                            ❌ Expired
+                          </span>
+                        )}
+                        {nightStatus.status === 'valid' && (
+                          <span className="badge-night-currency badge-night-valid" title={`Night Flying Date: ${nightStatus.flightDate} | Expires: ${nightStatus.expiryDate}`}>
+                            ✓ Valid ({nightStatus.daysRemaining}d)
+                          </span>
+                        )}
+                        {['not_logged', 'no_date', 'invalid'].includes(nightStatus.status) && (
+                          <span className="badge-night-currency badge-night-na" title="No Night PIC flight date recorded in CPL Flight Experience">
+                            —
+                          </span>
+                        )}
+                      </td>
                       <td>
                         {submission.queueStatus === 'queued' ? (
                           <div className="queue-action-cell">
@@ -1148,11 +1590,12 @@ function Dashboard() {
                         )}
                       </td>
                     </tr>
-                  ))
+                    )
+                  })
                 ) : (
                   <tr>
-                    <td colSpan="5" className="empty-submissions">
-                      {searchSplNumber.trim() || selectedDate
+                    <td colSpan="7" className="empty-submissions">
+                      {searchSplNumber.trim() || selectedDate || nightExpiryFilter
                         ? 'No available student found for these filters.'
                         : 'No available students yet.'}
                     </td>

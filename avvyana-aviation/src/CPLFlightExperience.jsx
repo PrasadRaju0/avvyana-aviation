@@ -114,10 +114,14 @@ function CPLFlightExperience() {
     Boolean(experience['night-pic']?.date || experience['night-pic']?.hours)
   )
 
-  // Persist committed experience to localStorage
+  // Persist committed experience to localStorage and global registry for admin
   useEffect(() => {
     try {
       localStorage.setItem(`cpl_experience_${studentId}`, JSON.stringify(experience))
+      
+      const allExperiences = JSON.parse(localStorage.getItem('all_cpl_experiences') || '{}')
+      allExperiences[studentId] = experience
+      localStorage.setItem('all_cpl_experiences', JSON.stringify(allExperiences))
     } catch {}
   }, [experience, studentId])
 

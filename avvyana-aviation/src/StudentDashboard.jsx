@@ -206,7 +206,7 @@ export default function StudentDashboard() {
         <section className="dash-modules-grid">
           
           {/* Card 1: Flight Availability */}
-          <article className="dash-module-card card-availability" onClick={() => window.open('/flight-availability', '_blank', 'noopener,noreferrer')} role="button" tabIndex={0}>
+          <article className="dash-module-card card-availability" onClick={() => navigate('/flight-availability')} role="button" tabIndex={0}>
             <div className="module-card-glow" />
             <div className="module-card-top">
               <div className="module-icon-box icon-flight">
@@ -245,7 +245,7 @@ export default function StudentDashboard() {
           </article>
 
           {/* Card 2: CPL Flight Experience */}
-          <article className="dash-module-card card-cpl" onClick={() => window.open('/student/cpl-flight-experience', '_blank', 'noopener,noreferrer')} role="button" tabIndex={0}>
+          <article className="dash-module-card card-cpl" onClick={() => navigate('/student/cpl-flight-experience')} role="button" tabIndex={0}>
             <div className="module-card-glow" />
             <div className="module-card-top">
               <div className="module-icon-box icon-cpl">
@@ -282,7 +282,7 @@ export default function StudentDashboard() {
           </article>
 
           {/* Card 3: Leave Request */}
-          <article className="dash-module-card card-leave" onClick={() => window.open('/leave-request', '_blank', 'noopener,noreferrer')} role="button" tabIndex={0}>
+          <article className="dash-module-card card-leave" onClick={() => navigate('/leave-request')} role="button" tabIndex={0}>
             <div className="module-card-glow" />
             <div className="module-card-top">
               <div className="module-icon-box icon-leave">

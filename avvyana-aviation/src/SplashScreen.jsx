@@ -71,6 +71,8 @@ export default function SplashScreen({ isFirstVisit, onFinish }) {
 
       <div className="splash-content">
         <div className="aaa-logo" aria-hidden="true">
+          <div className="aaa-lock-shockwave" />
+          <div className="aaa-gleam-sheen" />
           <div className={`aaa-piece ${isFirstVisit ? 'aaa-left' : 'aaa-piece-left'}`}>
             <img src="/avyanna-mark.svg" alt="" />
           </div>
