@@ -18,6 +18,7 @@
     0 1px 3px rgba(10, 31, 56, 0.04);
   position: relative;
   overflow: hidden;
+  animation: cardAppear 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .leave-request-card-premium::before {
@@ -29,6 +30,12 @@
   height: 4px;
   background: linear-gradient(90deg, #0284c7, #0ea5e9, #38bdf8, #0284c7);
   background-size: 200% 100%;
+  animation: headerLineSweep 4s linear infinite;
+}
+
+@keyframes headerLineSweep {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
 }
 
 /* Back Navigation Button */

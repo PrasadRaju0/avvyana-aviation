@@ -178,6 +178,7 @@
   gap: 36px;
   position: relative;
   overflow: hidden;
+  animation: dashFadeUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .dash-welcome-banner::before {
@@ -201,11 +202,11 @@
 .dash-flight-tag {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
+  gap: 10px;
+  padding: 5px 14px;
   border-radius: 20px;
   background: rgba(14, 165, 233, 0.14);
-  border: 1px solid rgba(56, 189, 248, 0.28);
+  border: 1px solid rgba(56, 189, 248, 0.32);
   color: #7dd3fc;
   font-size: 10.5px;
   font-weight: 800;
@@ -215,18 +216,42 @@
 }
 
 .live-pulsing-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #38bdf8;
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.3);
-  animation: pulseCyan 2s infinite;
+  position: relative;
+  box-shadow: 0 0 10px #38bdf8;
 }
 
-@keyframes pulseCyan {
-  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.5); }
-  70% { box-shadow: 0 0 0 6px rgba(56, 189, 248, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+.live-pulsing-dot::before,
+.live-pulsing-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid #38bdf8;
+  animation: radarPing 2.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.live-pulsing-dot::after {
+  animation-delay: 1.1s;
+}
+
+@keyframes radarPing {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes dashFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .dash-welcome-title {
@@ -341,6 +366,18 @@
   gap: 24px;
 }
 
+.dash-modules-grid .dash-module-card:nth-child(1) {
+  animation: dashFadeUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
+}
+
+.dash-modules-grid .dash-module-card:nth-child(2) {
+  animation: dashFadeUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.16s both;
+}
+
+.dash-modules-grid .dash-module-card:nth-child(3) {
+  animation: dashFadeUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.24s both;
+}
+
 .dash-module-card {
   position: relative;
   border-radius: 24px;
@@ -355,7 +392,7 @@
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   min-height: 380px;
 }
@@ -368,6 +405,35 @@
   right: 0;
   height: 5px;
   transition: opacity 0.3s ease;
+}
+
+.dash-module-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -60%;
+  width: 50%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    rgba(255, 255, 255, 0) 20%,
+    rgba(255, 255, 255, 0.5) 50%,
+    rgba(255, 255, 255, 0) 80%
+  );
+  transform: rotate(25deg);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.dash-module-card:hover::after {
+  opacity: 1;
+  animation: cardLightSheen 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cardLightSheen {
+  from { transform: translateX(0) rotate(25deg); }
+  to { transform: translateX(380%) rotate(25deg); }
 }
 
 .card-availability::before {
@@ -383,10 +449,10 @@
 }
 
 .dash-module-card:hover {
-  transform: translateY(-6px);
+  transform: translateY(-8px) scale(1.012);
   box-shadow:
-    0 28px 65px rgba(0, 10, 25, 0.4),
-    0 6px 16px rgba(2, 132, 199, 0.15);
+    0 32px 75px rgba(0, 10, 25, 0.42),
+    0 8px 24px rgba(2, 132, 199, 0.18);
   border-color: rgba(255, 255, 255, 1);
 }
 
@@ -406,6 +472,12 @@
   justify-content: center;
   font-size: 24px;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease;
+}
+
+.dash-module-card:hover .module-icon-box {
+  transform: translateY(-3px) scale(1.08) rotate(-4deg);
+  box-shadow: 0 10px 22px rgba(2, 132, 199, 0.25);
 }
 
 .icon-flight {
