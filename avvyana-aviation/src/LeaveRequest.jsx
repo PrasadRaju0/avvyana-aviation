@@ -68,20 +68,22 @@ function getLeaveStages(request) {
     },
     {
       step: 2,
-      name: 'CFI / DCFI Review',
-      detail: isApproved || isRejected
-        ? `Reviewed by ${reviewer}`
-        : 'Under review by Capt. Shariq Ali & Capt. SM',
+      name: isApproved ? 'CFI / DCFI Approved' : isRejected ? 'CFI / DCFI Rejected' : 'CFI / DCFI Review',
+      detail: isApproved
+        ? `Approved by ${reviewer}`
+        : isRejected
+          ? `Rejected by ${reviewer}`
+          : 'Under review by Capt. Shariq Ali & Capt. SM',
       state: isApproved || isRejected ? 'complete' : 'active',
     },
     {
       step: 3,
-      name: isRejected ? 'Decision: Rejected' : 'Leave Approved',
+      name: 'Gate Pass',
       detail: isApproved
         ? `Authorized by ${reviewer}`
         : isRejected
-          ? (request.rejectionReason ? `Reason: ${request.rejectionReason}` : 'Rejected by flight command')
-          : 'Awaiting commanding officer decision',
+          ? (request.rejectionReason ? `Reason: ${request.rejectionReason}` : 'Gate Pass Not Issued')
+          : 'Awaiting CFI / DCFI Approval',
       state: isApproved ? 'complete' : isRejected ? 'rejected' : 'upcoming',
     },
     {
@@ -90,7 +92,7 @@ function getLeaveStages(request) {
       detail: isClosed
         ? 'Campus return logged & leave closed'
         : isApproved
-          ? 'Pending campus return check-in'
+          ? 'Please visit OPS Department'
           : isRejected
             ? 'Process terminated'
             : 'Awaiting leave approval',
@@ -431,7 +433,7 @@ export default function LeaveRequest() {
                 <div className="stages-header-right">
                   <span className={`stages-status-pill status-${activeRequest.status === 'Approved' ? (activeRequest.returnReportedAt || activeRequest.closureClosedAt ? 'closed' : 'approved') : activeRequest.status === 'Rejected' ? 'rejected' : 'pending'}`}>
                     {activeRequest.status === 'Approved'
-                      ? (activeRequest.returnReportedAt || activeRequest.closureClosedAt ? '✓ Stage 4: Leave Closed' : '✓ Stage 3: Approved')
+                      ? (activeRequest.returnReportedAt || activeRequest.closureClosedAt ? '✓ Stage 4: Leave Closed' : '✓ Stage 3: Gate Pass')
                       : activeRequest.status === 'Rejected'
                         ? '✕ Stage 3: Rejected'
                         : '◷ Stage 2: Under Review'}
@@ -467,13 +469,13 @@ export default function LeaveRequest() {
                 })}
               </div>
 
-              {/* Stage 4 Leave Closure Notice (Informational only - Gate Pass & Leave Closure are Admin Access Only) */}
+              {/* Note: Please Visit OPS Department for Stage 4: Leave Closure */}
               {activeRequest.status === 'Approved' && !activeRequest.returnReportedAt && !activeRequest.closureClosedAt && (
                 <div className="stage-closure-notice-banner">
-                  <div className="closure-notice-icon">🛡️</div>
+                  <div className="closure-notice-icon">📌</div>
                   <div className="closure-banner-text">
-                    <strong>Stage 4: Return Verification &amp; Leave Closure (Admin Clearance Required)</strong>
-                    <span>Gate pass authorization and leave closure are restricted exclusively to Academy Flight Command. Upon returning to campus, report to the Duty Officer to record your return and close this leave.</span>
+                    <strong>Note: Please Visit OPS Department for Stage 4: Leave Closure</strong>
+                    <span>Upon returning to campus, please visit the Operations (OPS) Department to verify your return and complete your official leave closure.</span>
                   </div>
                 </div>
               )}
