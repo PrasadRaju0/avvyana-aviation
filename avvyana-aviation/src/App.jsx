@@ -723,7 +723,7 @@ function AdminPortalHome() {
           >
             <div className="hub-module-top">
               <div className="hub-module-icon icon-gatepass-ops">🎫</div>
-              <span className="hub-module-badge badge-cyan">OPS &amp; Security Desk</span>
+              <span className="hub-module-badge badge-emerald">OPS &amp; Security Desk</span>
             </div>
             <div className="hub-module-body">
               <h3>Gatepass &amp; Leave Closure</h3>
@@ -748,7 +748,7 @@ function AdminPortalHome() {
           >
             <div className="hub-module-top">
               <div className="hub-module-icon icon-queue-ops">⏱</div>
-              <span className="hub-module-badge badge-neutral">First-Come, First-Served</span>
+              <span className="hub-module-badge badge-amber">First-Come, First-Served</span>
             </div>
             <div className="hub-module-body">
               <h3>Live Sortie Queue</h3>
