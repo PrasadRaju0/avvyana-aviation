@@ -81,6 +81,7 @@ function AdminLeaveRequests() {
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedRequestKeys, setSelectedRequestKeys] = useState([])
   const [successMessage, setSuccessMessage] = useState('')
+  const [pendingGatePassModal, setPendingGatePassModal] = useState(null)
   const [studentAccountsMap, setStudentAccountsMap] = useState({})
   const [leaveRequests, setLeaveRequests] = useState(() => JSON.parse(
     localStorage.getItem('leaveRequests') || '[]'
@@ -202,7 +203,7 @@ function AdminLeaveRequests() {
 
 const GATE_PASS_OFFICER_PHONE = '917995063700'
 
-  const sendWhatsAppGatePass = (request, approverInfo) => {
+  const getGatePassDetails = (request, approverInfo) => {
     const studentInfo = studentAccountsMap[request.studentId] || {}
     const studentName = request.studentName || studentInfo.name || request.studentId || 'Cadet Pilot'
     const batchNumber = request.batchNumber || studentInfo.batchNumber || 'Batch 1'
@@ -231,7 +232,21 @@ const GATE_PASS_OFFICER_PHONE = '917995063700'
     })
 
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${GATE_PASS_OFFICER_PHONE}&text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+    return {
+      studentName,
+      batchNumber,
+      mobileNumber,
+      leaveDates,
+      authorizedBy,
+      message,
+      whatsappUrl,
+    }
+  }
+
+  const sendWhatsAppGatePass = (request, approverInfo) => {
+    const details = getGatePassDetails(request, approverInfo)
+    setPendingGatePassModal(details)
+    window.open(details.whatsappUrl, '_blank', 'noopener,noreferrer')
   }
 
   const handleDecision = async (requestIndex, status, decisionApprover) => {
@@ -251,16 +266,28 @@ const GATE_PASS_OFFICER_PHONE = '917995063700'
       }
     }
 
-    const updatedRequests = leaveRequests.map((request, index) => index === requestIndex
+    // Attempt to open popup before await to prevent browser popup blocker
+    let popup = null
+    let gatePassDetails = null
+    if (status === 'Approved') {
+      gatePassDetails = getGatePassDetails(request, decisionApprover)
+      try {
+        popup = window.open('about:blank', '_blank')
+      } catch (err) {
+        console.warn('Popup blocked:', err)
+      }
+    }
+
+    const updatedRequests = leaveRequests.map((req, index) => index === requestIndex
       ? {
-        ...request,
+        ...req,
         status,
         rejectionReason,
         reviewedBy: decisionApprover.name,
         reviewedRole: decisionApprover.role,
         reviewedAt: new Date().toISOString(),
       }
-      : request
+      : req
     )
 
     if (request.id) {
@@ -276,6 +303,7 @@ const GATE_PASS_OFFICER_PHONE = '917995063700'
         .eq('id', request.id)
 
       if (error) {
+        if (popup) popup.close()
         setSuccessMessage(`Unable to update leave request: ${error.message}`)
         return
       }
@@ -284,13 +312,20 @@ const GATE_PASS_OFFICER_PHONE = '917995063700'
     }
 
     setLeaveRequests(updatedRequests)
-    if (status === 'Approved') {
-      sendWhatsAppGatePass(request, decisionApprover)
-      setSuccessMessage(`✓ Leave approved! WhatsApp Gate Pass dispatched to 7995063700 for ${studentName}.`)
+    if (status === 'Approved' && gatePassDetails) {
+      if (popup) {
+        try {
+          popup.location.href = gatePassDetails.whatsappUrl
+        } catch {
+          // ignore navigation error
+        }
+      }
+      setPendingGatePassModal(gatePassDetails)
+      setSuccessMessage(`✓ Leave approved! Gate Pass ready for 7995063700 (${studentName}).`)
     } else {
       setSuccessMessage(`Leave request ${status.toLowerCase()}.`)
     }
-    window.setTimeout(() => setSuccessMessage(''), 4000)
+    window.setTimeout(() => setSuccessMessage(''), 5000)
   }
 
   const getRequestKey = (request) => request.requestedAt || `${request.studentId}-${request.fromDate}-${request.toDate}`
@@ -635,6 +670,55 @@ const GATE_PASS_OFFICER_PHONE = '917995063700'
           </table>
         </div>
       </section>
+
+      {pendingGatePassModal && (
+        <div className="gatepass-modal-backdrop" onClick={() => setPendingGatePassModal(null)}>
+          <div className="gatepass-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="gatepass-modal-header">
+              <div className="gatepass-modal-badge">✈️ GATE PASS READY FOR DISPATCH</div>
+              <button
+                type="button"
+                className="btn-gatepass-modal-close"
+                onClick={() => setPendingGatePassModal(null)}
+                aria-label="Close dialog"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="gatepass-modal-body">
+              <h3>Leave Approved: {pendingGatePassModal.studentName}</h3>
+              <p className="gatepass-modal-sub">
+                Target Recipient: <strong>+91 7995063700</strong>
+              </p>
+
+              <div className="gatepass-preview-box">
+                <pre>{pendingGatePassModal.message}</pre>
+              </div>
+            </div>
+
+            <div className="gatepass-modal-actions">
+              <a
+                href={pendingGatePassModal.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-modal-open-whatsapp"
+                onClick={() => setPendingGatePassModal(null)}
+              >
+                <span>📲 SEND TO 7995063700 ON WHATSAPP</span>
+                <span style={{ fontSize: '16px' }}>&rarr;</span>
+              </a>
+              <button
+                type="button"
+                className="btn-modal-dismiss"
+                onClick={() => setPendingGatePassModal(null)}
+              >
+                Close Window
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

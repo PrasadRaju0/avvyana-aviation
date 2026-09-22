@@ -3164,3 +3164,168 @@
 .btn-leave-unlock-submit:hover .unlock-arrow {
   transform: translateX(3px);
 }
+
+/* ==========================================================================
+   GATE PASS DISPATCH MODAL (DIRECT TO 7995063700)
+   ========================================================================== */
+.gatepass-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(7, 26, 48, 0.78);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.gatepass-modal-card {
+  width: min(100%, 540px);
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(2, 132, 199, 0.2);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: modalScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalScaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.gatepass-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gatepass-modal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.btn-gatepass-modal-close {
+  background: #f1f5f9;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+
+.btn-gatepass-modal-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.gatepass-modal-body h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.gatepass-modal-sub {
+  margin: 0 0 12px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.gatepass-modal-sub strong {
+  color: #059669;
+  font-size: 14px;
+}
+
+.gatepass-preview-box {
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 14px 16px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #1e293b;
+}
+
+.gatepass-preview-box pre {
+  margin: 0;
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.gatepass-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-modal-open-whatsapp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+  color: #ffffff;
+  text-decoration: none;
+  padding: 14px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
+  transition: all 0.2s ease;
+}
+
+.btn-modal-open-whatsapp:hover {
+  background: linear-gradient(135deg, #2ef777 0%, #10a37f 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.45);
+}
+
+.btn-modal-dismiss {
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  padding: 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-modal-dismiss:hover {
+  background: #f8fafc;
+  color: #334155;
+}
+
