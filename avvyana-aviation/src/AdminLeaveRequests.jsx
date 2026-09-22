@@ -43,6 +43,35 @@ function getReturnStatus(request) {
   return { label: `Due ${formatDate(request.toDate)}`, className: 'pending' }
 }
 
+function formatGatePassMessage({
+  studentName,
+  batchNumber,
+  leaveDates,
+  mobileNumber,
+  splNumber,
+  duration,
+  authorizedBy,
+  status = 'APPROVED',
+  passId,
+}) {
+  return [
+    '✈️ *AVYANNA AVIATION ACADEMY*',
+    '📋 *GATE PASS AUTHORIZATION*',
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    `👤 *Student Name*  : ${studentName || 'Cadet Pilot'}`,
+    splNumber ? `🎫 *SPL Number*    : ${splNumber}` : '',
+    `🎖️ *Batch*         : ${batchNumber || 'N/A'}`,
+    `📅 *Leave Dates*   : ${leaveDates}${duration && duration !== '-' ? ` (${duration})` : ''}`,
+    `📱 *Mobile Number* : ${mobileNumber || 'N/A'}`,
+    `🛡️ *Authorized By* : ${authorizedBy}`,
+    `✅ *Status*        : ${status}`,
+    '',
+    '👉 *Please issue the gate pass*',
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    passId ? `🔖 *Pass Ref*      : AVV-GP-${passId}` : '',
+  ].filter(Boolean).join('\n')
+}
+
 function AdminLeaveRequests() {
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
@@ -52,12 +81,55 @@ function AdminLeaveRequests() {
   const [statusFilter, setStatusFilter] = useState('All')
   const [selectedRequestKeys, setSelectedRequestKeys] = useState([])
   const [successMessage, setSuccessMessage] = useState('')
+  const [studentAccountsMap, setStudentAccountsMap] = useState({})
   const [leaveRequests, setLeaveRequests] = useState(() => JSON.parse(
     localStorage.getItem('leaveRequests') || '[]'
   ))
 
   useEffect(() => {
     let isMounted = true
+
+    const loadStudentData = async () => {
+      try {
+        const { data: accounts } = await supabase
+          .from('student_accounts')
+          .select('spl_number, full_name, batch_number, mobile_number')
+
+        const map = {}
+        if (accounts) {
+          accounts.forEach((acc) => {
+            if (acc.spl_number) {
+              map[acc.spl_number] = {
+                name: acc.full_name,
+                batchNumber: acc.batch_number,
+                mobileNumber: acc.mobile_number,
+              }
+            }
+          })
+        }
+
+        try {
+          const localAccs = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
+          localAccs.forEach((acc) => {
+            if (acc.splNumber && !map[acc.splNumber]) {
+              map[acc.splNumber] = {
+                name: acc.name,
+                batchNumber: acc.batchNumber,
+                mobileNumber: acc.mobileNumber,
+              }
+            }
+          })
+        } catch {
+          // ignore localstorage json error
+        }
+
+        if (isMounted) {
+          setStudentAccountsMap(map)
+        }
+      } catch (err) {
+        console.warn('Could not load student accounts map:', err)
+      }
+    }
 
     const loadLeaveRequests = async () => {
       const { data, error } = await supabase
@@ -71,6 +143,8 @@ function AdminLeaveRequests() {
         id: item.id,
         studentId: item.student_id,
         studentName: item.student_name,
+        batchNumber: item.batch_number,
+        mobileNumber: item.mobile_number,
         fromDate: item.from_date,
         toDate: item.to_date,
         reason: item.reason,
@@ -86,6 +160,7 @@ function AdminLeaveRequests() {
       })))
     }
 
+    loadStudentData()
     loadLeaveRequests()
     return () => { isMounted = false }
   }, [])
@@ -123,6 +198,38 @@ function AdminLeaveRequests() {
 
     window.alert('Please select 1 for Captain Shariq Ali (CFI) or 2 for Captain SM (DCFI).')
     return null
+  }
+
+  const sendWhatsAppGatePass = (request, approverInfo) => {
+    const studentInfo = studentAccountsMap[request.studentId] || {}
+    const studentName = request.studentName || studentInfo.name || request.studentId || 'Cadet Pilot'
+    const batchNumber = request.batchNumber || studentInfo.batchNumber || 'Batch 1'
+    const mobileNumber = request.mobileNumber || studentInfo.mobileNumber || 'N/A'
+    const fromFormatted = formatDate(request.fromDate)
+    const toFormatted = formatDate(request.toDate)
+    const leaveDates = `${fromFormatted} to ${toFormatted}`
+    const duration = getLeaveDuration(request.fromDate, request.toDate)
+
+    const authorizedBy = approverInfo?.name
+      ? `${approverInfo.name} (${approverInfo.role})`
+      : request.reviewedBy
+        ? `${request.reviewedBy}${request.reviewedRole ? ` (${request.reviewedRole})` : ''}`
+        : approverNames[request.reviewedRole] || 'CFI / DCFI Flight Command'
+
+    const message = formatGatePassMessage({
+      studentName,
+      batchNumber,
+      leaveDates,
+      mobileNumber,
+      splNumber: request.studentId,
+      duration,
+      authorizedBy,
+      status: 'APPROVED',
+      passId: request.id,
+    })
+
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
   }
 
   const handleDecision = async (requestIndex, status, decisionApprover) => {
@@ -175,8 +282,13 @@ function AdminLeaveRequests() {
     }
 
     setLeaveRequests(updatedRequests)
-    setSuccessMessage(`Leave request ${status.toLowerCase()}.`)
-    window.setTimeout(() => setSuccessMessage(''), 3000)
+    if (status === 'Approved') {
+      sendWhatsAppGatePass(request, decisionApprover)
+      setSuccessMessage(`✓ Leave approved! Opening WhatsApp Gate Pass for ${studentName}...`)
+    } else {
+      setSuccessMessage(`Leave request ${status.toLowerCase()}.`)
+    }
+    window.setTimeout(() => setSuccessMessage(''), 4000)
   }
 
   const getRequestKey = (request) => request.requestedAt || `${request.studentId}-${request.fromDate}-${request.toDate}`
@@ -273,8 +385,13 @@ function AdminLeaveRequests() {
 
     setLeaveRequests(updatedRequests)
     setSelectedRequestKeys([])
-    setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} ${status.toLowerCase()}.`)
-    window.setTimeout(() => setSuccessMessage(''), 3000)
+    if (status === 'Approved' && selectedRequests.length > 0) {
+      sendWhatsAppGatePass(selectedRequests[0], decisionApprover)
+      setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} approved. Dispatched WhatsApp Gate Pass for ${selectedRequests[0].studentName || selectedRequests[0].studentId}.`)
+    } else {
+      setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} ${status.toLowerCase()}.`)
+    }
+    window.setTimeout(() => setSuccessMessage(''), 4000)
   }
 
   if (!accessGranted) {
@@ -491,7 +608,21 @@ function AdminLeaveRequests() {
                             REJECT
                           </button>
                         </div>
-                      ) : <span className="reviewed-by">{request.status} by {request.reviewedBy || approverNames[request.reviewedRole] || '-'}</span>}
+                      ) : (
+                        <div className="leave-reviewed-cell">
+                          <span className="reviewed-by">{request.status} by {request.reviewedBy || approverNames[request.reviewedRole] || '-'}</span>
+                          {request.status === 'Approved' && (
+                            <button
+                              type="button"
+                              className="btn-whatsapp-gatepass"
+                              onClick={() => sendWhatsAppGatePass(request)}
+                              title="Open or Re-send Gate Pass on WhatsApp"
+                            >
+                              📲 WhatsApp Gate Pass
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )

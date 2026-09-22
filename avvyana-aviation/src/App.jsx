@@ -62,7 +62,7 @@ function LoginPage() {
     }
     const { data: databaseAccount, error: databaseError } = await supabase
       .from('student_accounts')
-      .select('spl_number, full_name, batch_number, password')
+      .select('spl_number, full_name, batch_number, mobile_number, password')
       .eq('spl_number', normalizedSpl)
       .eq('password', password)
       .maybeSingle()
@@ -75,6 +75,7 @@ function LoginPage() {
       ? {
         name: databaseAccount.full_name,
         batchNumber: databaseAccount.batch_number,
+        mobileNumber: databaseAccount.mobile_number,
       }
       : databaseError
         ? localAccount
@@ -85,6 +86,7 @@ function LoginPage() {
       localStorage.setItem('studentId', normalizedSpl)
       localStorage.setItem('studentName', account?.name || 'Cadet Pilot')
       localStorage.setItem('studentBatchNumber', account?.batchNumber || '')
+      localStorage.setItem('studentMobileNumber', account?.mobileNumber || '')
       localStorage.setItem('selectedFlightDate', flightDate)
 
       navigate('/dashboard')
@@ -257,6 +259,7 @@ function SignupPage() {
         email: account.email,
         password: account.password,
         batch_number: account.batchNumber,
+        mobile_number: account.mobileNumber,
       })
 
     if (signupError) {
@@ -277,6 +280,7 @@ function SignupPage() {
     localStorage.setItem('studentId', form.splNumber.trim())
     localStorage.setItem('studentName', form.name.trim())
     localStorage.setItem('studentBatchNumber', form.batchNumber.trim())
+    localStorage.setItem('studentMobileNumber', form.mobileNumber.trim())
     localStorage.setItem('selectedFlightDate', flightDate)
     navigate('/dashboard')
   }
