@@ -51,11 +51,27 @@ function getStoredLeaveRequests() {
   }
 }
 
+function isGatePassIssued(request) {
+  if (!request) return false
+  if (request.gatePassIssuedAt) return true
+  if (request.status === 'Gate pass issued') return true
+  if (request.rejectionReason && request.rejectionReason.startsWith('GATE_PASS_ISSUED:')) return true
+  try {
+    const issuedMap = JSON.parse(localStorage.getItem('issuedGatePasses') || '{}')
+    if (request.id && issuedMap[request.id]) return true
+    if (request.requestedAt && issuedMap[request.requestedAt]) return true
+  } catch {}
+  return false
+}
+
 function getLeaveStages(request) {
   const isApproved = request.status === 'Approved'
   const isRejected = request.status === 'Rejected'
   const isClosed = Boolean(request.returnReportedAt || request.closureClosedAt)
   const reviewer = request.reviewedBy || approverNames[request.reviewedRole] || 'CFI / DCFI'
+  const gatePassIssued = isApproved && isGatePassIssued(request)
+  const gatePassDate = request.gatePassIssuedAt ||
+    (request.rejectionReason?.startsWith('GATE_PASS_ISSUED:') ? request.rejectionReason.split('GATE_PASS_ISSUED:')[1] : null)
 
   return [
     {
@@ -79,12 +95,14 @@ function getLeaveStages(request) {
     {
       step: 3,
       name: 'Gate Pass',
-      detail: isApproved
-        ? `Authorized by ${reviewer}`
-        : isRejected
-          ? (request.rejectionReason ? `Reason: ${request.rejectionReason}` : 'Gate Pass Not Issued')
-          : 'Awaiting CFI / DCFI Approval',
-      state: isApproved ? 'complete' : isRejected ? 'rejected' : 'upcoming',
+      detail: gatePassIssued
+        ? (gatePassDate ? `Gate Pass Issued on ${formatStudentDate(gatePassDate.split('T')[0])}` : 'Gate Pass Issued & Authorized')
+        : isApproved
+          ? 'Awaiting Gate Pass Issuance by Admin'
+          : isRejected
+            ? (request.rejectionReason && !request.rejectionReason.startsWith('GATE_PASS_ISSUED:') ? `Reason: ${request.rejectionReason}` : 'Gate Pass Not Issued')
+            : 'Awaiting CFI / DCFI Approval',
+      state: gatePassIssued ? 'complete' : isApproved ? 'active' : isRejected ? 'rejected' : 'upcoming',
     },
     {
       step: 4,
@@ -96,7 +114,7 @@ function getLeaveStages(request) {
           : isRejected
             ? 'Process terminated'
             : 'Awaiting leave approval',
-      state: isClosed ? 'complete' : isApproved ? 'active' : 'upcoming',
+      state: isClosed ? 'complete' : (isApproved && gatePassIssued) ? 'active' : 'upcoming',
     },
   ]
 }
@@ -166,6 +184,7 @@ export default function LeaveRequest() {
           closureClosedAt: item.closure_closed_at,
           actualReturnDate: item.actual_return_date,
           trackingId: `AVV-${item.id}`,
+          gatePassIssuedAt: item.gate_pass_issued_at || (item.rejection_reason && item.rejection_reason.startsWith('GATE_PASS_ISSUED:') ? item.rejection_reason.replace('GATE_PASS_ISSUED:', '') : null),
         }))
         setRequests(mappedRequests)
         return
@@ -431,9 +450,13 @@ export default function LeaveRequest() {
                 </div>
 
                 <div className="stages-header-right">
-                  <span className={`stages-status-pill status-${activeRequest.status === 'Approved' ? (activeRequest.returnReportedAt || activeRequest.closureClosedAt ? 'closed' : 'approved') : activeRequest.status === 'Rejected' ? 'rejected' : 'pending'}`}>
+                  <span className={`stages-status-pill status-${activeRequest.status === 'Approved' ? (activeRequest.returnReportedAt || activeRequest.closureClosedAt ? 'closed' : isGatePassIssued(activeRequest) ? 'approved' : 'pending') : activeRequest.status === 'Rejected' ? 'rejected' : 'pending'}`}>
                     {activeRequest.status === 'Approved'
-                      ? (activeRequest.returnReportedAt || activeRequest.closureClosedAt ? '✓ Stage 4: Leave Closed' : '✓ Stage 3: Gate Pass')
+                      ? (activeRequest.returnReportedAt || activeRequest.closureClosedAt
+                          ? '✓ Stage 4: Leave Closed'
+                          : isGatePassIssued(activeRequest)
+                            ? '✓ Stage 3: Gate Pass'
+                            : '✓ Stage 2: Approved')
                       : activeRequest.status === 'Rejected'
                         ? '✕ Stage 3: Rejected'
                         : '◷ Stage 2: Under Review'}
@@ -726,7 +749,7 @@ export default function LeaveRequest() {
                           {!isClosed && isApproved && (
                             <span className="badge-chip chip-approved">
                               <span className="badge-dot dot-emerald" />
-                              <span>Stage 3: Approved</span>
+                              <span>{isGatePassIssued(req) ? 'Stage 3: Gate Pass Issued' : 'Stage 2: Approved'}</span>
                             </span>
                           )}
                           {isPending && (

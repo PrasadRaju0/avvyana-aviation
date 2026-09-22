@@ -157,6 +157,9 @@ function AdminLeaveRequests() {
         returnReportedAt: item.return_reported_at || item.returnReportedAt || null,
         actualReturnDate: item.actual_return_date || item.actualReturnDate || null,
         closureClosedAt: item.closure_closed_at || item.closureClosedAt || null,
+        gatePassIssuedAt: item.gate_pass_issued_at || (item.rejection_reason && item.rejection_reason.startsWith('GATE_PASS_ISSUED:')
+          ? item.rejection_reason.replace('GATE_PASS_ISSUED:', '')
+          : null),
       })))
     }
 
@@ -200,7 +203,69 @@ function AdminLeaveRequests() {
     return null
   }
 
+  const isRequestGatePassIssued = (request) => {
+    if (!request) return false
+    if (request.gatePassIssuedAt) return true
+    if (request.status === 'Gate pass issued') return true
+    if (request.rejectionReason && request.rejectionReason.startsWith('GATE_PASS_ISSUED:')) return true
+    try {
+      const issuedMap = JSON.parse(localStorage.getItem('issuedGatePasses') || '{}')
+      if (request.id && issuedMap[request.id]) return true
+      if (request.requestedAt && issuedMap[request.requestedAt]) return true
+    } catch {}
+    return false
+  }
+
+  const handleIssueGatePass = async (request, shouldOpenWhatsApp = false) => {
+    const studentName = request.studentName || request.studentId || 'this cadet'
+    const nowIso = new Date().toISOString()
+
+    if (request.id) {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          rejection_reason: `GATE_PASS_ISSUED:${nowIso}`,
+        })
+        .eq('id', request.id)
+
+      if (error) {
+        setSuccessMessage(`Unable to issue gate pass: ${error.message}`)
+        return
+      }
+    }
+
+    try {
+      const currentMap = JSON.parse(localStorage.getItem('issuedGatePasses') || '{}')
+      if (request.id) currentMap[request.id] = nowIso
+      if (request.requestedAt) currentMap[request.requestedAt] = nowIso
+      localStorage.setItem('issuedGatePasses', JSON.stringify(currentMap))
+    } catch {}
+
+    const updatedRequests = leaveRequests.map((item) => (
+      (item.id && item.id === request.id) || item.requestedAt === request.requestedAt
+        ? {
+            ...item,
+            gatePassIssuedAt: nowIso,
+            rejectionReason: `GATE_PASS_ISSUED:${nowIso}`,
+          }
+        : item
+    ))
+    localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    setLeaveRequests(updatedRequests)
+
+    if (shouldOpenWhatsApp) {
+      sendWhatsAppGatePass(request)
+    }
+
+    setSuccessMessage(`✓ Official Gate Pass issued for ${studentName}! Stage 3 is now verified.`)
+    window.setTimeout(() => setSuccessMessage(''), 4000)
+  }
+
   const sendWhatsAppGatePass = (request, approverInfo) => {
+    if (!isRequestGatePassIssued(request)) {
+      handleIssueGatePass(request, false)
+    }
+
     const studentInfo = studentAccountsMap[request.studentId] || {}
     const studentName = request.studentName || studentInfo.name || request.studentId || 'Cadet Pilot'
     const batchNumber = request.batchNumber || studentInfo.batchNumber || 'Batch 1'
@@ -283,8 +348,7 @@ function AdminLeaveRequests() {
 
     setLeaveRequests(updatedRequests)
     if (status === 'Approved') {
-      sendWhatsAppGatePass(request, decisionApprover)
-      setSuccessMessage(`✓ Leave approved! Opening WhatsApp Gate Pass for ${studentName}...`)
+      setSuccessMessage(`✓ Leave approved by ${decisionApprover.name} (${decisionApprover.role}). You can now issue the Gate Pass.`)
     } else {
       setSuccessMessage(`Leave request ${status.toLowerCase()}.`)
     }
@@ -428,8 +492,7 @@ function AdminLeaveRequests() {
     setLeaveRequests(updatedRequests)
     setSelectedRequestKeys([])
     if (status === 'Approved' && selectedRequests.length > 0) {
-      sendWhatsAppGatePass(selectedRequests[0], decisionApprover)
-      setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} approved. Dispatched WhatsApp Gate Pass for ${selectedRequests[0].studentName || selectedRequests[0].studentId}.`)
+      setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} approved by ${decisionApprover.name}. You can now issue Gate Passes.`)
     } else {
       setSuccessMessage(`${selectedRequests.length} leave request${selectedRequests.length === 1 ? '' : 's'} ${status.toLowerCase()}.`)
     }
@@ -624,7 +687,7 @@ function AdminLeaveRequests() {
                     <td><strong>{getLeaveDuration(request.fromDate, request.toDate)}</strong></td>
                     <td>{request.reason}</td>
                     <td><span className={`availability-status ${request.status.toLowerCase().replace(' ', '-')}`}>{request.status === 'Pending approval' ? 'Pending' : request.status}</span></td>
-                    <td>{request.rejectionReason || '-'}</td>
+                    <td>{request.status === 'Rejected' && request.rejectionReason && !request.rejectionReason.startsWith('GATE_PASS_ISSUED:') ? request.rejectionReason : '-'}</td>
                     <td><span className={`availability-status ${returnStatus.className}`}>{returnStatus.label}</span></td>
                     <td>
                       {request.status === 'Pending approval' ? (
@@ -655,6 +718,21 @@ function AdminLeaveRequests() {
                           <span className="reviewed-by">{request.status} by {request.reviewedBy || approverNames[request.reviewedRole] || '-'}</span>
                           {request.status === 'Approved' && (
                             <div className="admin-approved-actions-row">
+                              {!isRequestGatePassIssued(request) ? (
+                                <button
+                                  type="button"
+                                  className="btn-issue-gatepass"
+                                  onClick={() => handleIssueGatePass(request, false)}
+                                  title="Officially issue Gate Pass for this student (Stage 3)"
+                                >
+                                  🎫 Issue Gate Pass
+                                </button>
+                              ) : (
+                                <span className="admin-gatepass-issued-badge" title="Gate pass has been officially issued">
+                                  ✓ Gate Pass Issued
+                                </span>
+                              )}
+
                               <button
                                 type="button"
                                 className="btn-whatsapp-gatepass"
@@ -663,6 +741,7 @@ function AdminLeaveRequests() {
                               >
                                 📲 WhatsApp Gate Pass
                               </button>
+
                               {!request.closureClosedAt && !request.returnReportedAt ? (
                                 <button
                                   type="button"
