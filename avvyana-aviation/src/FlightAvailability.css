@@ -1009,6 +1009,62 @@
 
 /* LEAVE REQUEST */
 
+.cpl-route-trigger {
+  width: 100%;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 18px;
+
+  padding: 17px 19px;
+
+  border: 1px solid rgba(25, 110, 182, 0.28);
+
+  border-radius: 9px;
+
+  background: linear-gradient(135deg, rgba(22, 90, 158, 0.07), rgba(32, 150, 203, 0.12));
+
+  color: #172d43;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.cpl-route-trigger:hover {
+  border-color: #174d78;
+
+  background: linear-gradient(135deg, rgba(22, 90, 158, 0.12), rgba(32, 150, 203, 0.18));
+
+  transform: translateY(-1px);
+}
+
+.cpl-route-trigger > span:first-child {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 5px;
+}
+
+.cpl-route-trigger strong {
+  font-size: 14px;
+}
+
+.cpl-route-trigger small {
+  color: #5a6d7e;
+
+  font-size: 11px;
+
+  line-height: 1.4;
+}
+
 .leave-request-trigger {
   width: 100%;
 
@@ -1871,40 +1927,55 @@
   }
 }
 
-/* MOBILE */
+/* MOBILE RESPONSIVENESS */
 
-@media (max-width: 700px) {
-
+@media (max-width: 768px) {
   .flight-header {
     height: auto;
-
-    min-height: 70px;
-
-    padding:
-      15px 20px;
+    min-height: 64px;
+    padding: 12px 16px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px;
   }
 
   .academy-brand {
-    flex-direction: column;
+    gap: 8px;
+  }
 
-    gap: 2px;
+  .brand-small {
+    font-size: 11px;
+  }
+
+  .student-badge strong {
+    font-size: 12px;
   }
 
   .availability-wrapper {
-    padding:
-      25px 15px 40px;
+    padding: 18px 12px 40px;
   }
 
   .availability-card {
-    padding: 28px 20px;
+    padding: 24px 16px;
+    border-radius: 16px;
+  }
+
+  .availability-heading {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
   }
 
   .availability-heading h1 {
-    font-size: 30px;
+    font-size: clamp(22px, 6vw, 28px);
+  }
+
+  .availability-heading p {
+    font-size: 13px;
   }
 
   .queue-notification {
-    padding: 14px;
+    padding: 12px 14px;
   }
 
   .queue-notification-item {
@@ -1918,10 +1989,23 @@
 
   .availability-options {
     grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .availability-option {
+    min-height: 76px;
+    padding: 14px;
   }
 
   .exercise-grid {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .exercise-option {
+    min-height: 48px;
+    padding: 10px 12px;
+    font-size: 12px;
   }
 
   .leave-date-grid {
@@ -1938,28 +2022,50 @@
     flex-direction: column;
   }
 
-  .leave-history-tabs button {
-    font-size: 8px;
-  }
-
-  .leave-progress {
-    gap: 4px;
-    padding-inline: 4px;
-  }
-
-  .leave-progress-step {
-    font-size: 8px;
-  }
-
-  .new-leave-request-button {
-    margin-left: 50px;
-  }
-
   .submission-summary {
     grid-template-columns: 1fr;
   }
 
   .success-card {
-    padding: 30px 20px;
+    padding: 24px 16px;
+    border-radius: 16px;
+  }
+
+  .success-card h1 {
+    font-size: 24px;
+  }
+
+  .logout-button,
+  .flight-submit-button,
+  .sign-in-button {
+    height: 48px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .flight-header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .student-badge {
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+
+  .availability-wrapper {
+    padding: 12px 8px 30px;
+  }
+
+  .availability-card {
+    padding: 18px 12px;
+    border-radius: 14px;
+  }
+
+  .availability-heading h1 {
+    font-size: 22px;
   }
 }

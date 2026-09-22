@@ -6,8 +6,11 @@ import Dashboard from './Dashboard'
 import AdminLeaveRequests from './AdminLeaveRequests'
 import QueueMembersPage from './QueueMembersPage'
 import SplashScreen from './SplashScreen'
+import CPLFlightExperience from './CPLFlightExperience'
+import StudentDashboard from './StudentDashboard'
 import { supabase } from './lib/supabase'
 import './App.css'
+import './SignupDashboard.css'
 
 function sanitizeSplNumber(value) {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -80,11 +83,11 @@ function LoginPage() {
     if ((normalizedSpl === 'AVV-0001' && password === '123456') || account) {
       localStorage.setItem('studentLoggedIn', 'true')
       localStorage.setItem('studentId', normalizedSpl)
-      localStorage.setItem('studentName', account?.name || 'Demo Student')
+      localStorage.setItem('studentName', account?.name || 'Cadet Pilot')
       localStorage.setItem('studentBatchNumber', account?.batchNumber || '')
       localStorage.setItem('selectedFlightDate', flightDate)
 
-      navigate('/flight-availability')
+      navigate('/dashboard')
       return
     }
 
@@ -287,45 +290,94 @@ function SignupPage() {
       localStorage.setItem('studentAccounts', JSON.stringify(accounts))
     }
     setIsSubmitted(true)
-    
-    // Auto-redirect after 5 seconds
-    setTimeout(() => {
-      navigate('/')
-    }, 5000)
   }
 
-  // Thank you confirmation page
+  const enterPortalDirectly = () => {
+    const today = new Date()
+    const flightDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    localStorage.setItem('studentLoggedIn', 'true')
+    localStorage.setItem('studentId', form.splNumber.trim())
+    localStorage.setItem('studentName', form.name.trim())
+    localStorage.setItem('studentBatchNumber', form.batchNumber.trim())
+    localStorage.setItem('selectedFlightDate', flightDate)
+    navigate('/dashboard')
+  }
+
+  // Thank you confirmation / Welcome Cadet Dashboard
   if (isSubmitted) {
     return (
       <main className="signup-success-page">
-        <div className="signup-success-container">
-          <div className="success-icon">✓</div>
-          <h1>Account Created Successfully!</h1>
-          <p className="success-message">Thank you for joining Avyanna Aviation Academy!</p>
-          
-          <div className="account-details">
-            <div className="detail-row">
-              <span>SPL NUMBER</span>
-              <strong>{form.splNumber}</strong>
+        <div className="signup-success-container-premium">
+          <div className="signup-success-header-badge">
+            <span className="signup-success-header-badge-dot" />
+            <span>Registration Approved & Verified</span>
+          </div>
+
+          <h1 className="signup-success-title">Welcome to the Academy</h1>
+          <p className="signup-success-subtitle">
+            Your cadet profile has been successfully initialized in the Avyanna Flight Training System.
+          </p>
+
+          {/* Student Flight Card */}
+          <div className="signup-cadet-id-card">
+            <div className="cadet-card-top">
+              <div className="cadet-card-brand">
+                <span className="cadet-card-brand-name">Avyanna Aviation</span>
+                <span className="cadet-card-brand-sub">Student Flight Identification</span>
+              </div>
+              <span className="cadet-card-rank-tag">Student Pilot</span>
             </div>
-            <div className="detail-row">
-              <span>NAME</span>
-              <strong>{form.name}</strong>
-            </div>
-            <div className="detail-row">
-              <span>BATCH NUMBER</span>
-              <strong>{form.batchNumber || '-'}</strong>
+
+            <div className="cadet-card-grid">
+              <div className="cadet-card-item">
+                <span className="cadet-card-item-label">SPL Number</span>
+                <span className="cadet-card-item-value">{form.splNumber.trim()}</span>
+              </div>
+              <div className="cadet-card-item">
+                <span className="cadet-card-item-label">Student Name</span>
+                <span className="cadet-card-item-value">{form.name.trim()}</span>
+              </div>
+              <div className="cadet-card-item">
+                <span className="cadet-card-item-label">Batch Group</span>
+                <span className="cadet-card-item-value">{form.batchNumber ? `Batch ${form.batchNumber}` : 'Standard'}</span>
+              </div>
             </div>
           </div>
 
-          <p className="redirect-message">Redirecting to login page in 5 seconds...</p>
+          {/* Quick Access Training Features */}
+          <div className="signup-next-steps">
+            <div className="signup-next-steps-title">
+              <span>Included Pilot Privileges</span>
+            </div>
+            <div className="signup-features-grid">
+              <div className="signup-feature-box">
+                <span className="signup-feature-box-icon">✈</span>
+                <strong>Flight Availability</strong>
+                <span>Submit daily slots & live training queues.</span>
+              </div>
+              <div className="signup-feature-box">
+                <span className="signup-feature-box-icon">📊</span>
+                <strong>CPL Experience</strong>
+                <span>Track multi/single-engine flight requirements.</span>
+              </div>
+              <div className="signup-feature-box">
+                <span className="signup-feature-box-icon">📝</span>
+                <strong>Leave Management</strong>
+                <span>Apply for leaves and track CFI authorization.</span>
+              </div>
+            </div>
+          </div>
 
-          <button 
-            className="btn-login-now"
-            onClick={() => navigate('/')}
-          >
-            GO TO LOGIN
-          </button>
+          {/* Action CTAs */}
+          <div className="signup-actions-bar">
+            <button type="button" className="btn-enter-dashboard" onClick={enterPortalDirectly}>
+              <span>Enter Flight Dashboard</span>
+              <span style={{ fontSize: '18px' }}>→</span>
+            </button>
+            <button type="button" className="btn-return-login" onClick={() => navigate('/')}>
+              Sign In Screen
+            </button>
+          </div>
         </div>
       </main>
     )
@@ -707,6 +759,8 @@ function App() {
   ) : (
     <Routes>
       <Route path="/" element={<LoginPage />} />
+      <Route path="/dashboard" element={<StudentDashboard />} />
+      <Route path="/student/dashboard" element={<StudentDashboard />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/admin" element={<AdminPage />} />
@@ -715,6 +769,7 @@ function App() {
       <Route path="/admin/leave-requests" element={<AdminLeaveRequests />} />
       <Route path="/admin/signup" element={<AdminSignupPage />} />
       <Route path="/admin/forgot-password" element={<AdminForgotPasswordPage />} />
+      <Route path="/student/cpl-flight-experience" element={<CPLFlightExperience />} />
       <Route path="/flight-availability" element={<FlightAvailability />} />
       <Route path="/leave-request" element={<LeaveRequest />} />
     </Routes>

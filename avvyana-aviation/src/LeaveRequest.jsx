@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 
 import './FlightAvailability.css'
+import './LeaveRequest.css'
 
 const approverNames = {
   CFI: 'Captain Shariq',
@@ -18,7 +19,8 @@ function getLeaveDuration(fromDate, toDate) {
 
   if (Number.isNaN(difference) || difference < 0) return '-'
 
-  return `${Math.floor(difference / (1000 * 60 * 60 * 24)) + 1} days`
+  const days = Math.floor(difference / (1000 * 60 * 60 * 24)) + 1
+  return `${days} ${days === 1 ? 'day' : 'days'}`
 }
 
 function getTodayDate() {
@@ -47,7 +49,7 @@ function formatStudentDate(dateValue) {
   const date = new Date(`${dateValue}T00:00:00`)
   return Number.isNaN(date.getTime())
     ? '-'
-    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function getLeaveProgress(request) {
@@ -55,47 +57,31 @@ function getLeaveProgress(request) {
 
   if (request.status === 'Rejected') {
     return [
-      { label: 'Leave raised', state: 'complete' },
-      { label: 'Pending with CFI/DCFI', state: 'rejected' },
-      { label: 'Leave closure', state: 'locked' },
+      { label: 'Leave raised', subtitle: 'Request submitted successfully', state: 'complete' },
+      { label: 'Review by CFI/DCFI', subtitle: `Rejected: ${request.rejectionReason || 'Contact Admin'}`, state: 'rejected' },
+      { label: 'Leave closure', subtitle: 'Process stopped', state: 'upcoming' },
     ]
   }
 
   if (request.status === 'Approved') {
     return [
-      { label: 'Leave raised', state: 'complete' },
-      { label: 'Pending with CFI/DCFI', state: 'complete' },
-      { label: 'Leave closure', state: closureCompleted ? 'complete' : 'active' },
+      { label: 'Leave raised', subtitle: 'Request submitted successfully', state: 'complete' },
+      { label: 'Approved by CFI/DCFI', subtitle: request.reviewedBy ? `Approved by ${request.reviewedBy}` : 'Approved', state: 'complete' },
+      { label: 'Leave closure', subtitle: closureCompleted ? 'Returned to Academy' : 'Pending return confirmation', state: closureCompleted ? 'complete' : 'active' },
     ]
   }
 
   return [
-    { label: 'Leave raised', state: 'complete' },
-    { label: 'Pending with CFI/DCFI', state: 'active' },
-    { label: 'Leave closure', state: 'upcoming' },
+    { label: 'Leave raised', subtitle: 'Request submitted successfully', state: 'complete' },
+    { label: 'Pending with CFI/DCFI', subtitle: 'Under academy flight command review', state: 'active' },
+    { label: 'Leave closure', subtitle: 'Awaiting leave approval', state: 'upcoming' },
   ]
-}
-
-function getRequestStatusLabel(request) {
-  if (!request) {
-    return 'No requests yet'
-  }
-
-  if (request.status === 'Pending approval') {
-    return request.returnReportedAt || request.closureClosedAt ? 'Leave closed' : 'Pending with CFI/DCFI'
-  }
-
-  if (request.status === 'Approved') {
-    return request.returnReportedAt || request.closureClosedAt ? 'Leave closed' : 'Approved'
-  }
-
-  return request.status
 }
 
 function LeaveRequest() {
   const navigate = useNavigate()
   const studentId = localStorage.getItem('studentId') || 'AVV-0001'
-  const studentName = localStorage.getItem('studentName') || 'Demo Student'
+  const studentName = localStorage.getItem('studentName') || 'Cadet Pilot'
   const studentBatchNumber = localStorage.getItem('studentBatchNumber') || ''
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -109,9 +95,12 @@ function LeaveRequest() {
   const shouldShowForm = requests.length === 0 || isCreating
   const latestRequest = requests[0] || null
 
+  const approvedLeavesCount = requests.filter((r) => r.status === 'Approved').length
+  const pendingLeavesCount = requests.filter((r) => r.status === 'Pending approval').length
+
   const findLocalStudentRequests = () => {
-    const requests = getStoredLeaveRequests()
-    return requests
+    const stored = getStoredLeaveRequests()
+    return stored
       .filter((request) => request.studentId === studentId)
       .sort((first, second) => new Date(second.requestedAt) - new Date(first.requestedAt))
   }
@@ -173,12 +162,12 @@ function LeaveRequest() {
     setError('')
 
     if (!fromDate || !toDate || !reason.trim()) {
-      setError('Please select both leave dates and enter a reason.')
+      setError('Please select both leave dates and provide a detailed reason.')
       return
     }
 
     if (toDate < fromDate) {
-      setError('Leave end date cannot be before the leave start date.')
+      setError('Return date cannot be earlier than start date.')
       return
     }
 
@@ -193,6 +182,7 @@ function LeaveRequest() {
       requestedAt: new Date().toISOString(),
       trackingId: generateTrackingId(),
     }
+
     const { error: requestError } = await supabase
       .from('leave_requests')
       .insert({
@@ -205,7 +195,7 @@ function LeaveRequest() {
       })
 
     if (requestError) {
-      setError(`Unable to save leave request: ${requestError.message}`)
+      setError(`Unable to submit leave request: ${requestError.message}`)
       return
     }
 
@@ -223,7 +213,7 @@ function LeaveRequest() {
   }
 
   const markReturned = (request) => {
-    if (!window.confirm('Confirm that you have returned to the academy?')) return
+    if (!window.confirm('Confirm that you have returned to the academy campus?')) return
 
     const updatedRequests = getStoredLeaveRequests().map((item) => (
       item.requestedAt === request.requestedAt
@@ -239,6 +229,12 @@ function LeaveRequest() {
       (first, second) => new Date(second.requestedAt) - new Date(first.requestedAt)
     ))
   }
+
+  const visibleRequests = requestView === 'approved'
+    ? requests.filter((r) => r.status === 'Approved')
+    : requestView === 'pending'
+      ? requests.filter((r) => r.status === 'Pending approval')
+      : requests
 
   return (
     <main className="flight-page">
@@ -257,182 +253,271 @@ function LeaveRequest() {
       </header>
 
       <section className="availability-wrapper">
-        <div className="availability-card leave-request-page-card">
-          <button type="button" className="leave-page-back" onClick={() => navigate('/flight-availability')}>
-            BACK TO FLIGHT AVAILABILITY
-          </button>
+        <div className="leave-request-container">
+          <div className="leave-request-card-premium">
+            <button type="button" className="leave-premium-back-btn" onClick={() => navigate('/dashboard')}>
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span>Back to Dashboard</span>
+            </button>
 
-          <div className="availability-heading">
-            <div className="section-label">STUDENT SERVICES</div>
-            <h1>Leave Request</h1>
-          </div>
+            <div className="leave-premium-header">
+              <div className="leave-premium-header-copy">
+                <span className="leave-premium-tag">Student Portal</span>
+                <h1 className="leave-premium-title">Leave Management</h1>
+                <p className="leave-premium-subtitle">
+                  Apply for scheduled leaves, monitor CFI/DCFI approvals, and log campus check-ins.
+                </p>
+              </div>
 
-          {!isCreating && latestRequest && (
-            <div className="leave-progress leave-progress-summary" aria-label="Leave request progress">
-              <div className="leave-progress-header">Leave Progress</div>
-              {getLeaveProgress(latestRequest).map((step, stepIndex) => {
-                const marker = step.state === 'complete' ? '✓' : step.state === 'rejected' ? '!' : '•'
+              {!shouldShowForm && (
+                <button type="button" className="leave-header-action-btn" onClick={startNewRequest}>
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>Apply for Leave</span>
+                </button>
+              )}
+            </div>
 
-                return (
-                  <div className={`leave-progress-step ${step.state}`} key={`${step.label}-${stepIndex}`}>
-                    <span className="leave-progress-marker">{marker}</span>
-                    <div className="leave-progress-copy">
-                      <span className="leave-progress-title">{step.label}</span>
+            {!isCreating && latestRequest && (
+              <div className="leave-premium-top-grid">
+                {/* Stepper Card */}
+                <div className="leave-stepper-card">
+                  <div className="leave-stepper-head">
+                    <span>Active Request Timeline</span>
+                    <div className="leave-stepper-tracking">{latestRequest.trackingId || 'AVV-TRACK'}</div>
+                  </div>
+
+                  <div className="leave-stepper-steps">
+                    {getLeaveProgress(latestRequest).map((step, stepIndex) => {
+                      const marker = step.state === 'complete' ? '✓' : step.state === 'rejected' ? '!' : stepIndex + 1
+                      return (
+                        <div className={`leave-step-item ${step.state}`} key={`${step.label}-${stepIndex}`}>
+                          {stepIndex < 2 && <div className="leave-step-line" />}
+                          <div className="leave-step-icon">{marker}</div>
+                          <div className="leave-step-text">
+                            <strong>{step.label}</strong>
+                            <small>{step.subtitle}</small>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Metrics */}
+                <div className="leave-metrics-card">
+                  <div className="leave-hero-stat">
+                    <div className="leave-hero-stat-top">
+                      <span>Approved Leaves Taken</span>
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="leave-hero-stat-value">{approvedLeavesCount}</div>
+                    <div className="leave-hero-stat-caption">
+                      {approvedLeavesCount === 0 ? 'No approved leaves logged yet' : `${approvedLeavesCount} authorized leave records`}
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
 
-          {!isCreating && (
-            <div className="leave-summary-card" aria-label="Leave request summary">
-              <div className="leave-summary-label">APPROVED LEAVES TAKEN</div>
-              <div className="leave-summary-value">{requests.filter((request) => request.status === 'Approved').length}</div>
-              <div className="leave-summary-caption">
-                {requests.filter((request) => request.status === 'Approved').length === 0
-                  ? 'No approved leaves yet.'
-                  : requests.filter((request) => request.status === 'Approved').length === 1
-                    ? '1 approved leave taken so far.'
-                    : `${requests.filter((request) => request.status === 'Approved').length} approved leaves taken so far.`}
-              </div>
-            </div>
-          )}
-
-          {!isCreating && (
-            <div className="leave-request-history">
-              <div className="leave-history-intro">
-                <div className="leave-history-copy">
-                  <strong>Leave request history</strong>
-                  <span>Track every leave request, approval decision, and closure from one place.</span>
-                </div>
-                <div className="leave-history-actions">
-                  <button
-                    type="button"
-                    className={`leave-history-tab ${requestView === 'all' ? 'active' : ''}`}
-                    onClick={() => setRequestView('all')}
-                  >
-                    All requests
-                  </button>
-                  <button
-                    type="button"
-                    className={`leave-history-tab ${requestView === 'approved' ? 'active' : ''}`}
-                    onClick={() => setRequestView('approved')}
-                  >
-                    Approved leaves
-                  </button>
-                  <button type="button" className="new-leave-request-button" onClick={startNewRequest}>
-                    RAISE NEW REQUEST
-                  </button>
+                  <div className="leave-secondary-stat">
+                    <span>Pending Command Review</span>
+                    <strong>{pendingLeavesCount}</strong>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {(() => {
-                const visibleRequests = requestView === 'approved'
-                  ? requests.filter((request) => request.status === 'Approved')
-                  : requests
+            {/* Leave Application Form */}
+            {shouldShowForm && (
+              <form className="leave-form-card-premium" onSubmit={handleSubmit}>
+                <div className="leave-form-header">
+                  <div className="leave-form-header-text">
+                    <h3>Submit New Leave Application</h3>
+                    <p>Specify your absence timeframe and reason for Academy flight scheduling.</p>
+                  </div>
+                  {requests.length > 0 && (
+                    <button type="button" className="leave-form-cancel-btn" onClick={() => setIsCreating(false)}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
 
-                return (
-                  <section className="leave-request-group all-requests">
-                    <div className="leave-request-group-heading">
-                      <strong>{requestView === 'approved' ? 'Approved leaves' : 'Request history'}</strong>
-                      <span>{visibleRequests.length}</span>
-                    </div>
-                    {visibleRequests.length > 0 ? visibleRequests.map((request, index) => {
-                const statusClass = request.status.toLowerCase().replace(' ', '-')
-                const reviewedBy = request.reviewedBy || approverNames[request.reviewedRole] || 'the admin'
+                <div className="leave-grid-fields">
+                  <div className="leave-field-group">
+                    <label>
+                      <span>From Date</span>
+                      <span className="required">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      className="leave-input-premium"
+                      value={fromDate}
+                      min={getTodayDate()}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      required
+                    />
+                  </div>
 
-                return (
-                  <article className={`leave-request-record ${statusClass}`} key={`${request.requestedAt}-${index}`}>
-                    <div className="leave-request-meta">
-                      <span className="leave-request-meta-label">Tracking ID</span>
-                      <strong>{request.trackingId || 'AVV-TRACK'}</strong>
-                      <small>{new Date(request.requestedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</small>
-                    </div>
-                    <div className="leave-status-banner">
-                      <strong>
-                        {request.status === 'Approved'
-                          ? (request.returnReportedAt || request.closureClosedAt ? '✓ LEAVE CLOSED' : '✓ APPROVED')
-                          : request.status === 'Rejected'
-                            ? '× REJECTED'
-                            : '◷ PENDING WITH CFI/DCFI'}
-                      </strong>
-                      <span>
-                        {request.status === 'Approved'
-                          ? (request.returnReportedAt || request.closureClosedAt
-                            ? `Leave closed successfully. Approved by ${reviewedBy}.`
-                            : `Approved by ${reviewedBy}.`)
-                          : request.status === 'Rejected'
-                            ? `Rejected by ${reviewedBy}. Reason: ${request.rejectionReason || 'Please contact the academy.'}`
-                            : 'Your leave request has been raised and is pending review by CFI/DCFI.'}
-                      </span>
-                      {request.status === 'Approved' && (request.returnReportedAt
-                        ? <small className="return-confirmed">✓ Return reported to academy</small>
-                        : getTodayDate() >= request.toDate && (
-                          <button type="button" className="return-report-button" onClick={() => markReturned(request)}>
-                            CONFIRM RETURN TO ACADEMY
-                          </button>
-                        ))}
-                    </div>
-                    <div className={`leave-request-pending ${statusClass}`}>
-                      <span className="pending-icon">{request.status === 'Approved' ? '✓' : request.status === 'Rejected' ? '!' : '◷'}</span>
-                      <span className="leave-request-details">
-                        <strong>
-                          {request.status === 'Approved'
-                            ? (request.returnReportedAt || request.closureClosedAt ? 'Leave closed' : 'Approved')
-                            : request.status === 'Rejected'
-                              ? 'Request rejected'
-                              : 'Pending with CFI/DCFI'}
-                        </strong>
-                        <small>{formatStudentDate(request.fromDate)} to {formatStudentDate(request.toDate)} · {getLeaveDuration(request.fromDate, request.toDate)}</small>
-                      </span>
-                    </div>
-                  </article>
-                )
-                    }) : <div className="leave-empty-view">No leave requests yet. Raise your first request below.</div>}
-                  </section>
-                )
-              })}
-            </div>
-          )}
+                  <div className="leave-field-group">
+                    <label>
+                      <span>To Date</span>
+                      <span className="required">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      className="leave-input-premium"
+                      value={toDate}
+                      min={fromDate || getTodayDate()}
+                      onChange={(e) => setToDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
 
-          {shouldShowForm && (
-            <form className="leave-request-box" onSubmit={handleSubmit}>
-              <div className="leave-form-intro">
-                <strong>Plan your time away</strong>
-                <span>Choose your dates and tell the academy why you need leave.</span>
+                <div className="leave-field-group">
+                  <label>
+                    <span>Reason for Leave</span>
+                    <span className="required">*</span>
+                  </label>
+                  <textarea
+                    className="leave-textarea-premium"
+                    placeholder="Provide detailed explanation for your leave request (e.g. personal, medical, exam)..."
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    rows="4"
+                    required
+                  />
+                </div>
+
+                {error && <div className="flight-error" style={{ marginTop: '16px' }}>{error}</div>}
+
+                <div className="leave-form-footer">
+                  {requests.length > 0 && (
+                    <button type="button" className="leave-form-cancel-btn" onClick={() => setIsCreating(false)}>
+                      Discard
+                    </button>
+                  )}
+                  <button type="submit" className="leave-submit-btn-premium">
+                    <span>Submit Application</span>
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" style={{ width: '16px', height: '16px' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Leave History List */}
+            {!isCreating && requests.length > 0 && (
+              <div className="leave-history-section">
+                <div className="leave-history-nav">
+                  <div className="leave-tabs-pill">
+                    <button
+                      type="button"
+                      className={`leave-tab-pill-btn ${requestView === 'all' ? 'active' : ''}`}
+                      onClick={() => setRequestView('all')}
+                    >
+                      <span>All Requests</span>
+                      <span className="leave-tab-count">{requests.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`leave-tab-pill-btn ${requestView === 'approved' ? 'active' : ''}`}
+                      onClick={() => setRequestView('approved')}
+                    >
+                      <span>Approved</span>
+                      <span className="leave-tab-count">{approvedLeavesCount}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`leave-tab-pill-btn ${requestView === 'pending' ? 'active' : ''}`}
+                      onClick={() => setRequestView('pending')}
+                    >
+                      <span>Pending</span>
+                      <span className="leave-tab-count">{pendingLeavesCount}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="leave-history-list">
+                  {visibleRequests.length > 0 ? (
+                    visibleRequests.map((req, idx) => {
+                      const isClosed = Boolean(req.returnReportedAt || req.closureClosedAt)
+                      const isApproved = req.status === 'Approved'
+                      const isRejected = req.status === 'Rejected'
+                      const reviewer = req.reviewedBy || approverNames[req.reviewedRole] || 'CFI / DCFI'
+                      const statusClass = isClosed ? 'closed' : isApproved ? 'approved' : isRejected ? 'rejected' : 'pending'
+
+                      return (
+                        <article className="leave-record-card-premium" key={`${req.requestedAt}-${idx}`}>
+                          <div className="leave-record-top">
+                            <div className="leave-record-tracking">
+                              <span className="leave-record-tracking-id">{req.trackingId || 'AVV-TRACK'}</span>
+                              <span className="leave-record-date-created">Applied on {formatStudentDate(req.requestedAt ? req.requestedAt.split('T')[0] : '')}</span>
+                            </div>
+
+                            <span className={`leave-badge-status ${statusClass}`}>
+                              {isClosed ? '✓ Closed & Returned' : isApproved ? '✓ Approved' : isRejected ? '✕ Rejected' : '◷ Pending Approval'}
+                            </span>
+                          </div>
+
+                          <div className="leave-record-body">
+                            <div className="leave-record-dates">
+                              <span className="leave-record-dates-label">Leave Timeframe</span>
+                              <div className="leave-record-dates-val">
+                                {formatStudentDate(req.fromDate)} – {formatStudentDate(req.toDate)}
+                              </div>
+                              <span className="leave-record-duration">Duration: {getLeaveDuration(req.fromDate, req.toDate)}</span>
+                            </div>
+
+                            <div className="leave-record-reason">
+                              <span className="leave-record-reason-label">Reason Stated</span>
+                              <div className="leave-record-reason-text">{req.reason}</div>
+                            </div>
+                          </div>
+
+                          <div className="leave-record-footer">
+                            <div className="leave-review-info">
+                              {isApproved ? (
+                                <span>Authorized by <strong>{reviewer}</strong></span>
+                              ) : isRejected ? (
+                                <span style={{ color: '#dc2626' }}>Rejected by <strong>{reviewer}</strong> {req.rejectionReason ? `(${req.rejectionReason})` : ''}</span>
+                              ) : (
+                                <span>Awaiting CFI / DCFI commanding officer decision</span>
+                              )}
+                            </div>
+
+                            {isApproved && (
+                              req.returnReportedAt ? (
+                                <span className="leave-return-confirmed-tag">✓ Return Logged to Campus</span>
+                              ) : getTodayDate() >= req.toDate && (
+                                <button type="button" className="leave-confirm-return-btn" onClick={() => markReturned(req)}>
+                                  Confirm Campus Return
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </article>
+                      )
+                    })
+                  ) : (
+                    <div className="leave-empty-state-premium">
+                      <div className="leave-empty-state-icon">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" style={{ width: '24px', height: '24px' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                      </div>
+                      <h4>No requests found</h4>
+                      <p>There are no leave records matching the current tab filter.</p>
+                    </div>
+                  )}
+                </div>
               </div>
-
-              <div className="leave-date-grid">
-                <label>
-                  START DATE
-                  <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} required />
-                </label>
-                <label>
-                  RETURN DATE
-                  <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} required />
-                </label>
-              </div>
-
-              <label className="leave-reason-field">
-                REASON FOR LEAVE <span>*</span>
-                <textarea
-                  placeholder="Enter the reason for your leave request"
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  rows="5"
-                  required
-                />
-              </label>
-
-              {error && <div className="flight-error">{error}</div>}
-
-              <button type="submit" className="leave-request-submit">
-                <span>RAISE LEAVE REQUEST</span>
-                <span className="submit-arrow">→</span>
-              </button>
-            </form>
-          )}
+            )}
+          </div>
         </div>
       </section>
     </main>
@@ -440,3 +525,4 @@ function LeaveRequest() {
 }
 
 export default LeaveRequest
+

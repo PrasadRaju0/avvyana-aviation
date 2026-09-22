@@ -644,11 +644,16 @@ function FlightAvailability() {
         )}
 
         <div className="availability-card">
+          <button type="button" className="leave-premium-back-btn" onClick={() => navigate('/dashboard')} style={{ marginBottom: '20px' }}>
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" style={{ width: '14px', height: '14px' }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span>Back to Dashboard</span>
+          </button>
 
           {/* TITLE */}
 
           <div className="availability-heading">
-
             <div className="section-label">
               FLIGHT OPERATIONS
             </div>
@@ -1095,28 +1100,6 @@ function FlightAvailability() {
                 →
               </span>
             </button>
-
-            <div className="form-section leave-request-section">
-
-              <div className="form-section-title">
-                04
-                <span>LEAVE REQUEST</span>
-              </div>
-
-              <button
-                type="button"
-                className="leave-request-trigger"
-                onClick={() => navigate('/leave-request')}
-              >
-                <span>
-                  <strong>Open leave request page</strong>
-                  <small>Submit leave dates and reason, then track admin approval.</small>
-                </span>
-                <span className="submit-arrow">→</span>
-              </button>
-
-            </div>
-
           </form>
 
           <div className="availability-footer">
