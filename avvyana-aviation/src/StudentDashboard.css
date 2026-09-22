@@ -383,6 +383,7 @@
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.98);
   color: #0f172a;
+  text-decoration: none;
   border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow:
     0 18px 45px rgba(0, 10, 25, 0.28),
@@ -395,6 +396,14 @@
   transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   min-height: 380px;
+}
+
+.dash-module-card:hover,
+.dash-module-card:focus,
+.dash-module-card:active,
+.dash-module-card:visited {
+  color: #0f172a;
+  text-decoration: none;
 }
 
 .dash-module-card::before {

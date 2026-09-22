@@ -649,11 +649,11 @@ function AdminPortalHome() {
 
         <div className="admin-hub-modules-grid">
           {/* Module 1: Cadets Availability & Sortie Management */}
-          <article 
+          <a 
+            href="/admin/cadets-availability"
+            target="_blank"
+            rel="noopener noreferrer"
             className="admin-hub-module-card card-cadets-ops"
-            onClick={() => navigate('/admin/cadets-availability')}
-            role="button"
-            tabIndex={0}
           >
             <div className="hub-module-top">
               <div className="hub-module-icon icon-flight-ops">✈</div>
@@ -677,14 +677,14 @@ function AdminPortalHome() {
               <span>Open Cadets Availability</span>
               <span className="hub-arrow">→</span>
             </div>
-          </article>
+          </a>
 
           {/* Module 2: Leave & Check-in Approvals */}
-          <article 
+          <a 
+            href="/admin/leave-requests"
+            target="_blank"
+            rel="noopener noreferrer"
             className="admin-hub-module-card card-leaves-ops"
-            onClick={() => navigate('/admin/leave-requests')}
-            role="button"
-            tabIndex={0}
           >
             <div className="hub-module-top">
               <div className="hub-module-icon icon-leave-ops">📋</div>
@@ -708,14 +708,14 @@ function AdminPortalHome() {
               <span>Open Leave Management</span>
               <span className="hub-arrow">→</span>
             </div>
-          </article>
+          </a>
 
           {/* Module 3: Live Exercise Queue */}
-          <article 
+          <a 
+            href="/admin/queue-members"
+            target="_blank"
+            rel="noopener noreferrer"
             className="admin-hub-module-card card-queue-ops"
-            onClick={() => navigate('/admin/queue-members')}
-            role="button"
-            tabIndex={0}
           >
             <div className="hub-module-top">
               <div className="hub-module-icon icon-queue-ops">⏱</div>
@@ -733,7 +733,7 @@ function AdminPortalHome() {
               <span>Open Sortie Queue</span>
               <span className="hub-arrow">→</span>
             </div>
-          </article>
+          </a>
         </div>
 
         {/* Quick Return */}

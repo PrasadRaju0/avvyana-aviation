@@ -166,9 +166,6 @@ export default function StudentDashboard() {
               <span>FLIGHT OPERATIONS CENTER • {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</span>
             </div>
             <h1 className="dash-welcome-title">{greeting}, {studentName}</h1>
-            <p className="dash-welcome-desc">
-              Manage your daily flight availability, monitor syllabus progress towards your CPL license, and submit leave applications from your central flight deck.
-            </p>
           </div>
 
           <div className="dash-banner-metrics">
@@ -206,7 +203,12 @@ export default function StudentDashboard() {
         <section className="dash-modules-grid">
           
           {/* Card 1: Flight Availability */}
-          <article className="dash-module-card card-availability" onClick={() => navigate('/flight-availability')} role="button" tabIndex={0}>
+          <a 
+            href="/flight-availability" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="dash-module-card card-availability"
+          >
             <div className="module-card-glow" />
             <div className="module-card-top">
               <div className="module-icon-box icon-flight">
@@ -242,10 +244,15 @@ export default function StudentDashboard() {
                 <span className="dash-arrow">→</span>
               </span>
             </div>
-          </article>
+          </a>
 
           {/* Card 2: CPL Flight Experience */}
-          <article className="dash-module-card card-cpl" onClick={() => navigate('/student/cpl-flight-experience')} role="button" tabIndex={0}>
+          <a 
+            href="/student/cpl-flight-experience" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="dash-module-card card-cpl"
+          >
             <div className="module-card-glow" />
             <div className="module-card-top">
               <div className="module-icon-box icon-cpl">
@@ -279,10 +286,15 @@ export default function StudentDashboard() {
                 <span className="dash-arrow">→</span>
               </span>
             </div>
-          </article>
+          </a>
 
           {/* Card 3: Leave Request */}
-          <article className="dash-module-card card-leave" onClick={() => navigate('/leave-request')} role="button" tabIndex={0}>
+          <a 
+            href="/leave-request" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="dash-module-card card-leave"
+          >
             <div className="module-card-glow" />
             <div className="module-card-top">
               <div className="module-icon-box icon-leave">
@@ -318,7 +330,7 @@ export default function StudentDashboard() {
                 <span className="dash-arrow">→</span>
               </span>
             </div>
-          </article>
+          </a>
 
         </section>
 

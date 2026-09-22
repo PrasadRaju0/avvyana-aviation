@@ -2708,6 +2708,16 @@
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   position: relative;
   overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+}
+
+.admin-hub-module-card:hover,
+.admin-hub-module-card:focus,
+.admin-hub-module-card:active,
+.admin-hub-module-card:visited {
+  text-decoration: none;
+  color: inherit;
 }
 
 .admin-hub-module-card::before {
