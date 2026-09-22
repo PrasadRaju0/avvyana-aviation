@@ -200,6 +200,8 @@ function AdminLeaveRequests() {
     return null
   }
 
+const GATE_PASS_OFFICER_PHONE = '917995063700'
+
   const sendWhatsAppGatePass = (request, approverInfo) => {
     const studentInfo = studentAccountsMap[request.studentId] || {}
     const studentName = request.studentName || studentInfo.name || request.studentId || 'Cadet Pilot'
@@ -228,7 +230,7 @@ function AdminLeaveRequests() {
       passId: request.id,
     })
 
-    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${GATE_PASS_OFFICER_PHONE}&text=${encodeURIComponent(message)}`
     window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
   }
 
@@ -284,7 +286,7 @@ function AdminLeaveRequests() {
     setLeaveRequests(updatedRequests)
     if (status === 'Approved') {
       sendWhatsAppGatePass(request, decisionApprover)
-      setSuccessMessage(`✓ Leave approved! Opening WhatsApp Gate Pass for ${studentName}...`)
+      setSuccessMessage(`✓ Leave approved! WhatsApp Gate Pass dispatched to 7995063700 for ${studentName}.`)
     } else {
       setSuccessMessage(`Leave request ${status.toLowerCase()}.`)
     }
@@ -616,7 +618,7 @@ function AdminLeaveRequests() {
                               type="button"
                               className="btn-whatsapp-gatepass"
                               onClick={() => sendWhatsAppGatePass(request)}
-                              title="Open or Re-send Gate Pass on WhatsApp"
+                              title="Send Gate Pass directly to 7995063700 on WhatsApp"
                             >
                               📲 WhatsApp Gate Pass
                             </button>

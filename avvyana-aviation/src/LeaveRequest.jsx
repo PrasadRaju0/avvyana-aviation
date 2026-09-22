@@ -105,6 +105,7 @@ export default function LeaveRequest() {
   const studentName = localStorage.getItem('studentName') || 'Cadet Pilot'
   const studentBatchNumber = localStorage.getItem('studentBatchNumber') || ''
   const studentMobileNumber = localStorage.getItem('studentMobileNumber') || ''
+  const GATE_PASS_OFFICER_PHONE = '917995063700'
 
   const openWhatsAppGatePass = (req) => {
     if (!req) return
@@ -130,7 +131,7 @@ export default function LeaveRequest() {
       req.id ? `🔖 *Pass Ref*      : AVV-GP-${req.id}` : '',
     ].filter(Boolean).join('\n')
 
-    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${GATE_PASS_OFFICER_PHONE}&text=${encodeURIComponent(message)}`
     window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
   }
 
@@ -551,7 +552,7 @@ export default function LeaveRequest() {
                       type="button"
                       className="btn-whatsapp-pass-student"
                       onClick={() => openWhatsAppGatePass(activeRequest)}
-                      title="Open or Share Gate Pass on WhatsApp"
+                      title="Send Gate Pass directly to 7995063700 on WhatsApp"
                     >
                       <span>📲 WhatsApp Gate Pass</span>
                     </button>
@@ -878,7 +879,7 @@ export default function LeaveRequest() {
                               type="button"
                               className="btn-whatsapp-pass-inline"
                               onClick={() => openWhatsAppGatePass(req)}
-                              title="Share Gate Pass on WhatsApp"
+                              title="Send Gate Pass directly to 7995063700 on WhatsApp"
                             >
                               <span>📲 WhatsApp Gate Pass</span>
                             </button>
