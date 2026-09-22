@@ -106,34 +106,6 @@ export default function LeaveRequest() {
   const studentBatchNumber = localStorage.getItem('studentBatchNumber') || ''
   const studentMobileNumber = localStorage.getItem('studentMobileNumber') || ''
 
-  const openWhatsAppGatePass = (req) => {
-    if (!req) return
-    const fromStr = formatStudentDate(req.fromDate)
-    const toStr = formatStudentDate(req.toDate)
-    const durationStr = getLeaveDuration(req.fromDate, req.toDate)
-    const reviewer = req.reviewedBy || approverNames[req.reviewedRole] || 'Captain Shariq Ali (CFI)'
-
-    const message = [
-      '✈️ *AVYANNA AVIATION ACADEMY*',
-      '📋 *OFFICIAL GATE PASS AUTHORIZATION*',
-      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `👤 *Student Name*  : ${req.studentName || studentName}`,
-      `🎫 *SPL Number*    : ${req.studentId || studentId}`,
-      `🎖️ *Batch*         : ${req.studentBatchNumber || studentBatchNumber || 'Batch 1'}`,
-      `📅 *Leave Dates*   : ${fromStr} to ${toStr} (${durationStr})`,
-      `📱 *Mobile Number* : ${req.studentMobileNumber || studentMobileNumber || 'N/A'}`,
-      `🛡️ *Authorized By* : ${reviewer}`,
-      '✅ *Status*        : APPROVED',
-      '',
-      '👉 *Please issue the gate pass*',
-      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-      req.id ? `🔖 *Pass Ref*      : AVV-GP-${req.id}` : '',
-    ].filter(Boolean).join('\n')
-
-    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-  }
-
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [reason, setReason] = useState('')
@@ -284,50 +256,6 @@ export default function LeaveRequest() {
     setFromDate('')
     setToDate('')
     setReason('')
-  }
-
-  const handleConfirmReturn = async (request) => {
-    if (!window.confirm('Confirm that you have returned to the academy campus to complete Leave Closure?')) return
-
-    const nowIso = new Date().toISOString()
-    const today = getTodayDate()
-
-    try {
-      await supabase
-        .from('leave_requests')
-        .update({
-          return_reported_at: nowIso,
-          closure_closed_at: nowIso,
-          actual_return_date: today,
-        })
-        .eq('id', request.id)
-    } catch {}
-
-    const updated = requests.map((item) => (
-      item.id === request.id || item.requestedAt === request.requestedAt
-        ? {
-            ...item,
-            returnReportedAt: nowIso,
-            closureClosedAt: nowIso,
-            actualReturnDate: today,
-          }
-        : item
-    ))
-    setRequests(updated)
-
-    try {
-      const stored = getStoredLeaveRequests().map((item) => (
-        item.id === request.id || item.requestedAt === request.requestedAt
-          ? {
-              ...item,
-              returnReportedAt: nowIso,
-              closureClosedAt: nowIso,
-              actualReturnDate: today,
-            }
-          : item
-      ))
-      localStorage.setItem('leaveRequests', JSON.stringify(stored))
-    } catch {}
   }
 
   const startNewRequest = () => {
@@ -539,29 +467,13 @@ export default function LeaveRequest() {
                 })}
               </div>
 
-              {/* Action Buttons for Approved Leave & Stage 4 Leave Closure */}
+              {/* Stage 4 Leave Closure Notice (Informational only - Gate Pass & Leave Closure are Admin Access Only) */}
               {activeRequest.status === 'Approved' && !activeRequest.returnReportedAt && !activeRequest.closureClosedAt && (
-                <div className="stage-closure-action-banner">
+                <div className="stage-closure-notice-banner">
+                  <div className="closure-notice-icon">🛡️</div>
                   <div className="closure-banner-text">
-                    <strong>Stage 4 Action: Campus Check-In Required</strong>
-                    <span>Once you have returned to the academy premises, confirm your return to officially complete Leave Closure.</span>
-                  </div>
-                  <div className="stage-closure-button-group">
-                    <button
-                      type="button"
-                      className="btn-whatsapp-pass-student"
-                      onClick={() => openWhatsAppGatePass(activeRequest)}
-                      title="Open or Share Gate Pass on WhatsApp"
-                    >
-                      <span>📲 WhatsApp Gate Pass</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-confirm-closure"
-                      onClick={() => handleConfirmReturn(activeRequest)}
-                    >
-                      <span>✓ Confirm Campus Return (Close Leave)</span>
-                    </button>
+                    <strong>Stage 4: Return Verification &amp; Leave Closure (Admin Clearance Required)</strong>
+                    <span>Gate pass authorization and leave closure are restricted exclusively to Academy Flight Command. Upon returning to campus, report to the Duty Officer to record your return and close this leave.</span>
                   </div>
                 </div>
               )}
@@ -897,13 +809,9 @@ export default function LeaveRequest() {
                           )}
 
                           {isApproved && !isClosed && (
-                            <button
-                              type="button"
-                              className="btn-card-closure-inline"
-                              onClick={() => handleConfirmReturn(req)}
-                            >
-                              <span>✓ Confirm Return (Close Leave)</span>
-                            </button>
+                            <span className="card-pending-closure-pill">
+                              ◷ Stage 4: Awaiting Admin Closure
+                            </span>
                           )}
 
                           {isClosed && (

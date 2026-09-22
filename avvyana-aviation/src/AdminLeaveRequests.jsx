@@ -291,6 +291,48 @@ function AdminLeaveRequests() {
     window.setTimeout(() => setSuccessMessage(''), 4000)
   }
 
+  const handleAdminCloseLeave = async (request) => {
+    const studentName = request.studentName || request.studentId || 'this cadet'
+    if (!window.confirm(`Confirm that ${studentName} has returned to the academy premises and officially close this leave (Stage 4 Closure)?`)) {
+      return
+    }
+
+    const nowIso = new Date().toISOString()
+    const today = getTodayDate()
+
+    if (request.id) {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          return_reported_at: nowIso,
+          closure_closed_at: nowIso,
+          actual_return_date: today,
+        })
+        .eq('id', request.id)
+
+      if (error) {
+        setSuccessMessage(`Unable to close leave: ${error.message}`)
+        return
+      }
+    }
+
+    const updatedRequests = leaveRequests.map((item) => (
+      (item.id && item.id === request.id) || item.requestedAt === request.requestedAt
+        ? {
+            ...item,
+            returnReportedAt: nowIso,
+            closureClosedAt: nowIso,
+            actualReturnDate: today,
+          }
+        : item
+    ))
+
+    localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
+    setLeaveRequests(updatedRequests)
+    setSuccessMessage(`✓ Stage 4 Leave Closure completed for ${studentName}. Campus return verified.`)
+    window.setTimeout(() => setSuccessMessage(''), 4000)
+  }
+
   const getRequestKey = (request) => request.requestedAt || `${request.studentId}-${request.fromDate}-${request.toDate}`
 
   const filteredRequests = leaveRequests.filter((request) => {
@@ -612,14 +654,30 @@ function AdminLeaveRequests() {
                         <div className="leave-reviewed-cell">
                           <span className="reviewed-by">{request.status} by {request.reviewedBy || approverNames[request.reviewedRole] || '-'}</span>
                           {request.status === 'Approved' && (
-                            <button
-                              type="button"
-                              className="btn-whatsapp-gatepass"
-                              onClick={() => sendWhatsAppGatePass(request)}
-                              title="Open or Re-send Gate Pass on WhatsApp"
-                            >
-                              📲 WhatsApp Gate Pass
-                            </button>
+                            <div className="admin-approved-actions-row">
+                              <button
+                                type="button"
+                                className="btn-whatsapp-gatepass"
+                                onClick={() => sendWhatsAppGatePass(request)}
+                                title="Open or Re-send Official Gate Pass on WhatsApp"
+                              >
+                                📲 WhatsApp Gate Pass
+                              </button>
+                              {!request.closureClosedAt && !request.returnReportedAt ? (
+                                <button
+                                  type="button"
+                                  className="btn-admin-close-leave"
+                                  onClick={() => handleAdminCloseLeave(request)}
+                                  title="Mark student returned to campus and officially close leave (Stage 4)"
+                                >
+                                  ✓ Close Leave
+                                </button>
+                              ) : (
+                                <span className="admin-leave-closed-badge">
+                                  ✓ Leave Closed
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
