@@ -13,11 +13,12 @@ import './App.css'
 import './SignupDashboard.css'
 
 function sanitizeSplNumber(value) {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
 function isValidSplNumber(value) {
-  return /^[A-Z0-9]+$/.test(value) && /[A-Z]/.test(value) && /\d/.test(value)
+  const clean = sanitizeSplNumber(value)
+  return clean.length >= 3 && /[A-Z]/.test(clean) && /\d/.test(clean)
 }
 
 function sanitizeMobileNumber(value) {
@@ -55,35 +56,52 @@ function LoginPage() {
     e.preventDefault()
     setError('')
 
-    const normalizedSpl = studentId.trim()
-    if (!isValidSplNumber(normalizedSpl)) {
+    const rawSpl = studentId.trim()
+    const cleanSpl = sanitizeSplNumber(rawSpl)
+    if (!isValidSplNumber(rawSpl)) {
       setError('SPL Number must contain both letters and numbers.')
       return
     }
-    const { data: databaseAccount, error: databaseError } = await supabase
-      .from('student_accounts')
-      .select('spl_number, full_name, batch_number, mobile_number, password')
-      .eq('spl_number', normalizedSpl)
-      .eq('password', password)
-      .maybeSingle()
+
+    let databaseAccount = null
+    try {
+      const { data, error: databaseError } = await supabase
+        .from('student_accounts')
+        .select('spl_number, full_name, batch_number, password')
+        .or(`spl_number.ilike."${rawSpl}",spl_number.ilike."${cleanSpl}"`)
+        .eq('password', password)
+        .maybeSingle()
+
+      if (!databaseError && data) {
+        databaseAccount = data
+      }
+    } catch {
+      // Fall through to local account check
+    }
 
     const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
     const localAccount = accounts.find(
-      (item) => item.splNumber === normalizedSpl && item.password === password
+      (item) => (
+        (sanitizeSplNumber(item.splNumber) === cleanSpl || item.splNumber?.toLowerCase() === rawSpl.toLowerCase())
+        && item.password === password
+      )
     )
+
     const account = databaseAccount
       ? {
         name: databaseAccount.full_name,
         batchNumber: databaseAccount.batch_number,
-        mobileNumber: databaseAccount.mobile_number,
+        mobileNumber: '',
+        splNumber: databaseAccount.spl_number,
       }
-      : databaseError
-        ? localAccount
-        : null
+      : localAccount
 
-    if ((normalizedSpl === 'AVV-0001' && password === '123456') || account) {
+    const isDemoAccount = (cleanSpl === 'AVV0001' || rawSpl.toUpperCase() === 'AVV-0001') && password === '123456'
+
+    if (isDemoAccount || account) {
+      const effectiveSpl = account?.splNumber || (isDemoAccount ? 'AVV-0001' : cleanSpl)
       localStorage.setItem('studentLoggedIn', 'true')
-      localStorage.setItem('studentId', normalizedSpl)
+      localStorage.setItem('studentId', effectiveSpl)
       localStorage.setItem('studentName', account?.name || 'Cadet Pilot')
       localStorage.setItem('studentBatchNumber', account?.batchNumber || '')
       localStorage.setItem('studentMobileNumber', account?.mobileNumber || '')
@@ -222,19 +240,20 @@ function SignupPage() {
     }
 
     const normalizedEmail = form.email.trim().toLowerCase()
+    const cleanSpl = sanitizeSplNumber(form.splNumber)
     const [{ data: splAccount, error: splLookupError }, { data: emailAccount, error: emailLookupError }] = await Promise.all([
-      supabase.from('student_accounts').select('id').eq('spl_number', normalizedSpl).maybeSingle(),
+      supabase.from('student_accounts').select('id').or(`spl_number.ilike."${normalizedSpl}",spl_number.ilike."${cleanSpl}"`).maybeSingle(),
       supabase.from('student_accounts').select('id').eq('email', normalizedEmail).maybeSingle(),
     ])
 
     const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
     const localDuplicate = accounts.find((item) => (
-      item.splNumber === normalizedSpl
+      sanitizeSplNumber(item.splNumber) === cleanSpl
       || item.email?.toLowerCase() === normalizedEmail
       || item.mobileNumber === normalizedMobile
     ))
     if (splAccount || emailAccount || localDuplicate) {
-      const duplicateField = splAccount || localDuplicate?.splNumber === normalizedSpl
+      const duplicateField = splAccount || sanitizeSplNumber(localDuplicate?.splNumber) === cleanSpl
         ? 'SPL Number'
         : emailAccount || localDuplicate?.email?.toLowerCase() === normalizedEmail
           ? 'email address'
@@ -245,7 +264,7 @@ function SignupPage() {
 
     const account = {
       name: form.name.trim(),
-      splNumber: normalizedSpl,
+      splNumber: cleanSpl,
       batchNumber: normalizedBatch,
       mobileNumber: normalizedMobile,
       email: normalizedEmail,
@@ -259,16 +278,16 @@ function SignupPage() {
         email: account.email,
         password: account.password,
         batch_number: account.batchNumber,
-        mobile_number: account.mobileNumber,
       })
+
+    accounts.push(account)
+    localStorage.setItem('studentAccounts', JSON.stringify(accounts))
 
     if (signupError) {
       if (!splLookupError && !emailLookupError) {
         setError(`Unable to create account: ${signupError.message}`)
         return
       }
-      accounts.push(account)
-      localStorage.setItem('studentAccounts', JSON.stringify(accounts))
     }
     setIsSubmitted(true)
   }
@@ -387,15 +406,19 @@ function ForgotPasswordPage() {
       setError('Enter a valid email address, for example student@gmail.com.')
       return null
     }
+    const cleanSpl = sanitizeSplNumber(normalizedSpl)
     const { data: databaseAccount, error: databaseError } = await supabase
       .from('student_accounts')
       .select('id, spl_number, email')
-      .eq('spl_number', normalizedSpl)
+      .or(`spl_number.ilike."${normalizedSpl}",spl_number.ilike."${cleanSpl}"`)
       .eq('email', normalizedEmail)
       .maybeSingle()
 
     const accounts = JSON.parse(localStorage.getItem('studentAccounts') || '[]')
-    const localIndex = accounts.findIndex((item) => item.splNumber === normalizedSpl && item.email?.toLowerCase() === normalizedEmail)
+    const localIndex = accounts.findIndex((item) => (
+      (sanitizeSplNumber(item.splNumber) === cleanSpl || item.splNumber?.toLowerCase() === normalizedSpl.toLowerCase())
+      && item.email?.toLowerCase() === normalizedEmail
+    ))
     if (!databaseAccount && (!databaseError || localIndex === -1)) {
       setError('No student account matches that SPL Number and email.')
       return null

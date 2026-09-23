@@ -110,7 +110,7 @@ function AdminLeaveRequests() {
       try {
         const { data: accounts } = await supabase
           .from('student_accounts')
-          .select('spl_number, full_name, batch_number, mobile_number')
+          .select('spl_number, full_name, batch_number')
 
         const map = {}
         if (accounts) {
@@ -119,7 +119,7 @@ function AdminLeaveRequests() {
               map[acc.spl_number] = {
                 name: acc.full_name,
                 batchNumber: acc.batch_number,
-                mobileNumber: acc.mobile_number,
+                mobileNumber: acc.mobile_number || '',
               }
             }
           })
