@@ -215,31 +215,14 @@ function FlightAvailability() {
         : []
   }
 
-  const checkDateSubmissionLimit = (selectedExercises = []) => {
-    if (!selectedFlightDate) return false
-
-    return getStoredSubmissions().some((submission) => {
-      const submissionDate = submission.flightDate ||
-        (submission.submittedAt ? submission.submittedAt.slice(0, 10) : '')
-
-      if (submission.studentId !== studentId || submissionDate !== selectedFlightDate) return false
-      if (submission.availability !== 'available') return true
-
-      const existingExercises = (submission.exercise || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-      return selectedExercises.some((item) => existingExercises.includes(item))
-    })
+  const checkDateSubmissionLimit = () => {
+    // Cadets can submit and update availability as many times as they want
+    return false
   }
 
-  // Check page load for existing submissions for the selected flight date
+  // Allow unlimited submissions/updates for any date
   useEffect(() => {
-    if (checkDateSubmissionLimit()) {
-      setError(
-        '✓ You have already submitted your flight availability for this selected flight date. Choose another date to submit again.'
-      )
-    }
+    setError('')
   }, [selectedFlightDate, studentId])
 
   useEffect(() => {
@@ -316,14 +299,7 @@ function FlightAvailability() {
       return
     }
 
-    if (checkDateSubmissionLimit(availability === 'available' ? exercise : [])) {
-      setError(
-        availability === 'available'
-          ? 'You already submitted one of these exercises for this date. Choose another exercise.'
-          : 'You already submitted your availability for this date. Choose another date.'
-      )
-      return
-    }
+
 
     if (flyingHours === '') {
       setError(
@@ -402,16 +378,18 @@ function FlightAvailability() {
       JSON.stringify(submission)
     )
 
-    // Store the submission date and student ID for daily limit check
-    const today = new Date().toISOString().split('T')[0]
-    localStorage.setItem(
-      'lastSubmissionDate',
-      JSON.stringify({
-        date: today,
-        studentId: studentId,
-        submittedAt: new Date().toISOString(),
-      })
-    )
+    try {
+      const existingList = JSON.parse(localStorage.getItem('flightSubmissions') || '[]')
+      const updatedList = [
+        submission,
+        ...existingList.filter(
+          (s) => !(s.studentId === studentId && (s.flightDate === selectedFlightDate || s.submittedAt?.slice(0, 10) === selectedFlightDate))
+        ),
+      ]
+      localStorage.setItem('flightSubmissions', JSON.stringify(updatedList))
+    } catch {
+      // ignore
+    }
 
     setSubmitted(true)
   }
@@ -533,7 +511,7 @@ function FlightAvailability() {
                   {availability === 'available'
                     ? '😊 Available for Flying'
                     : availability === 'seventh-day'
-                      ? '7️⃣ 7th Day'
+                      ? '😴 7th Day Rest'
                     : '😢 Not Available'}
                 </strong>
               </div>
@@ -844,11 +822,11 @@ function FlightAvailability() {
                     setError('')
                   }}
                 >
-                  <span className="option-icon">7</span>
+                  <span className="option-icon">😴</span>
 
                   <span className="option-content">
-                    <strong>😴 7th Day</strong>
-                    <small>Due to 7th day, I am not available.</small>
+                    <strong>7th Day Rest</strong>
+                    <small>Mandatory rest day flying restriction.</small>
                   </span>
 
                   <span className="option-radio">

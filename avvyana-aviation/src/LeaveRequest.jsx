@@ -136,14 +136,35 @@ export default function LeaveRequest() {
   const [requestView, setRequestView] = useState('all')
   const [showHistory, setShowHistory] = useState(false) // Hidden by default as requested!
 
-  const approvedLeavesCount = requests.filter((r) => r.status === 'Approved').length
+  // Leave extension modal state
+  const [extendingRequest, setExtendingRequest] = useState(null)
+  const [extendedNewDate, setExtendedNewDate] = useState('')
+  const [extensionReason, setExtensionReason] = useState('')
+  const [isSubmittingExtension, setIsSubmittingExtension] = useState(false)
+  const [extensionError, setExtensionError] = useState('')
+
+  const approvedOrClosedRequests = requests.filter((r) => r.status === 'Approved' || r.status === 'Closed')
+  const approvedLeavesCount = approvedOrClosedRequests.length
   const pendingLeavesCount = requests.filter((r) => r.status === 'Pending approval').length
-  const totalDaysApproved = requests
-    .filter((r) => r.status === 'Approved')
-    .reduce((total, r) => total + getLeaveDaysCount(r.fromDate, r.toDate), 0)
+
+  // Total leave days taken so far, strictly counting actual return dates and extensions:
+  const totalLeavesTaken = approvedOrClosedRequests.reduce((total, r) => {
+    const effectiveReturn = r.actualReturnDate || r.toDate
+    return total + getLeaveDaysCount(r.fromDate, effectiveReturn)
+  }, 0)
+
+  // Calculate extended days added across all approved leaves:
+  const totalExtendedDays = approvedOrClosedRequests.reduce((sum, r) => {
+    const orig = r.originalToDate
+    const effective = r.actualReturnDate || r.toDate
+    if (orig && effective > orig) {
+      return sum + (getLeaveDaysCount(r.fromDate, effective) - getLeaveDaysCount(r.fromDate, orig))
+    }
+    return sum
+  }, 0)
 
   // Only consider as active if leave is still ongoing (not yet closed and not rejected)
-  const activeRequest = requests.find((r) => !r.returnReportedAt && !r.closureClosedAt && r.status !== 'Rejected') || null
+  const activeRequest = requests.find((r) => !r.returnReportedAt && !r.closureClosedAt && r.status !== 'Rejected' && r.status !== 'Closed') || null
 
   const findLocalStudentRequests = () => {
     const stored = getStoredLeaveRequests()
@@ -166,26 +187,34 @@ export default function LeaveRequest() {
 
       if (!isMounted) return
 
+      const stored = getStoredLeaveRequests()
+      const storedMap = new Map(stored.map((s) => [s.id || s.requestedAt, s]))
+
       if (!fetchErr && data) {
-        const mappedRequests = data.map((item) => ({
-          id: item.id,
-          studentId: item.student_id,
-          studentName: item.student_name,
-          fromDate: item.from_date,
-          toDate: item.to_date,
-          reason: item.reason,
-          status: item.status,
-          rejectionReason: item.rejection_reason,
-          reviewedBy: item.reviewed_by,
-          reviewedRole: item.reviewed_role,
-          reviewedAt: item.reviewed_at,
-          requestedAt: item.created_at,
-          returnReportedAt: item.return_reported_at,
-          closureClosedAt: item.closure_closed_at,
-          actualReturnDate: item.actual_return_date,
-          trackingId: `AVV-${item.id}`,
-          gatePassIssuedAt: item.gate_pass_issued_at || (item.rejection_reason && item.rejection_reason.startsWith('GATE_PASS_ISSUED:') ? item.rejection_reason.replace('GATE_PASS_ISSUED:', '') : null),
-        }))
+        const mappedRequests = data.map((item) => {
+          const localItem = storedMap.get(item.id) || storedMap.get(item.created_at) || {}
+          return {
+            id: item.id,
+            studentId: item.student_id,
+            studentName: item.student_name,
+            fromDate: item.from_date,
+            toDate: item.to_date,
+            reason: item.reason,
+            status: item.status,
+            rejectionReason: item.rejection_reason,
+            reviewedBy: item.reviewed_by,
+            reviewedRole: item.reviewed_role,
+            reviewedAt: item.reviewed_at,
+            requestedAt: item.created_at,
+            returnReportedAt: item.return_reported_at,
+            closureClosedAt: item.closure_closed_at,
+            actualReturnDate: item.actual_return_date || localItem.actualReturnDate || item.to_date,
+            originalToDate: localItem.originalToDate || null,
+            extensionReason: localItem.extensionReason || null,
+            trackingId: `AVV-${item.id}`,
+            gatePassIssuedAt: item.gate_pass_issued_at || (item.rejection_reason && item.rejection_reason.startsWith('GATE_PASS_ISSUED:') ? item.rejection_reason.replace('GATE_PASS_ISSUED:', '') : null),
+          }
+        })
         setRequests(mappedRequests)
         return
       }
@@ -292,6 +321,74 @@ export default function LeaveRequest() {
     setShowHistory(true)
   }
 
+  const handleOpenExtendModal = (req) => {
+    setExtendingRequest(req)
+    setExtendedNewDate(req.actualReturnDate || req.toDate || getTodayDate())
+    setExtensionReason('')
+    setExtensionError('')
+  }
+
+  const handleConfirmExtend = async (e) => {
+    if (e) e.preventDefault()
+    if (!extendingRequest || !extendedNewDate) return
+    const currentEnd = extendingRequest.actualReturnDate || extendingRequest.toDate
+    if (extendedNewDate <= currentEnd) {
+      setExtensionError(`Extended date must be after current scheduled return date (${formatStudentDate(currentEnd)}).`)
+      return
+    }
+
+    setIsSubmittingExtension(true)
+    setExtensionError('')
+
+    const originalToDate = extendingRequest.originalToDate || extendingRequest.toDate
+
+    if (extendingRequest.id) {
+      const { error: updateErr } = await supabase
+        .from('leave_requests')
+        .update({
+          to_date: extendedNewDate,
+          actual_return_date: extendedNewDate,
+        })
+        .eq('id', extendingRequest.id)
+
+      if (updateErr) {
+        setIsSubmittingExtension(false)
+        setExtensionError(`Unable to save extension: ${updateErr.message}`)
+        return
+      }
+    }
+
+    const updated = requests.map((item) => (
+      (item.id && item.id === extendingRequest.id) || item.requestedAt === extendingRequest.requestedAt
+        ? {
+            ...item,
+            toDate: extendedNewDate,
+            actualReturnDate: extendedNewDate,
+            originalToDate: originalToDate,
+            extensionReason: extensionReason || item.extensionReason,
+          }
+        : item
+    ))
+
+    const stored = getStoredLeaveRequests()
+    const updatedStored = stored.map((item) => (
+      (item.id && item.id === extendingRequest.id) || item.requestedAt === extendingRequest.requestedAt
+        ? {
+            ...item,
+            toDate: extendedNewDate,
+            actualReturnDate: extendedNewDate,
+            originalToDate: originalToDate,
+            extensionReason: extensionReason || item.extensionReason,
+          }
+        : item
+    ))
+    localStorage.setItem('leaveRequests', JSON.stringify(updatedStored))
+
+    setRequests(updated)
+    setIsSubmittingExtension(false)
+    setExtendingRequest(null)
+  }
+
   const visibleRequests = requestView === 'approved'
     ? requests.filter((r) => r.status === 'Approved')
     : requestView === 'pending'
@@ -381,56 +478,72 @@ export default function LeaveRequest() {
           )}
         </section>
 
-        {/* 3 Executive Summary Stat Cards (Interactive: Clicking opens corresponding history!) */}
-        <section className="leave-stats-row">
-          <div
-            className="leave-stat-card card-stat-approved interactive"
-            onClick={() => openHistoryWithFilter('approved')}
-            title="Click to view previous approved leaves in History"
-            role="button"
-            tabIndex={0}
-          >
-            <div className="stat-card-icon-box icon-emerald">
-              ✓
+        {/* TOTAL NUMBER OF LEAVES TAKEN SO FAR (Replaces the 3 cards per user request) */}
+        <section 
+          className="leave-total-summary-card interactive"
+          onClick={() => openHistoryWithFilter('approved')}
+          title="Click to view all approved leaves and extended records in History"
+          role="button"
+          tabIndex={0}
+        >
+          <div className="total-summary-left">
+            <div className="total-summary-icon-box">
+              <span className="total-summary-icon">✈</span>
             </div>
-            <div className="stat-card-data">
-              <span className="stat-card-label">Approved Leaves</span>
-              <div className="stat-card-number">{approvedLeavesCount}</div>
-              <span className="stat-card-hint">Click to view in History &rarr;</span>
-            </div>
-          </div>
-
-          <div
-            className="leave-stat-card card-stat-pending interactive"
-            onClick={() => openHistoryWithFilter('pending')}
-            title="Click to view pending requests in History"
-            role="button"
-            tabIndex={0}
-          >
-            <div className="stat-card-icon-box icon-amber">
-              ◷
-            </div>
-            <div className="stat-card-data">
-              <span className="stat-card-label">Pending Review</span>
-              <div className="stat-card-number">{pendingLeavesCount}</div>
-              <span className="stat-card-hint">Under Command Review &rarr;</span>
+            <div className="total-summary-content">
+              <div className="total-summary-badge-wrap">
+                <span className="total-summary-badge">OFFICIAL CADET RECORD</span>
+                <span className="total-summary-tag">DGCA COMPLIANCE</span>
+              </div>
+              <h2 className="total-summary-title">Total Number of Leaves Taken So Far</h2>
+              <p className="total-summary-subtitle">
+                Cumulative total of all authorized leave days, dynamically adjusted for approved date extensions and recorded return closures.
+              </p>
             </div>
           </div>
 
-          <div
-            className="leave-stat-card card-stat-days interactive"
-            onClick={() => openHistoryWithFilter('all')}
-            title="Click to view all leave records"
-            role="button"
-            tabIndex={0}
-          >
-            <div className="stat-card-icon-box icon-cyan">
-              📅
+          <div className="total-summary-right">
+            <div className="total-summary-stat-box">
+              <div className="total-summary-number-row">
+                <span className="total-summary-number">{totalLeavesTaken}</span>
+                <span className="total-summary-unit">{totalLeavesTaken === 1 ? 'Day' : 'Days'}</span>
+              </div>
+              <div className="total-summary-pills-row">
+                <span className="summary-pill pill-approved" title="Approved leave applications">
+                  ✓ {approvedLeavesCount} Approved
+                </span>
+                {totalExtendedDays > 0 && (
+                  <span className="summary-pill pill-extended" title="Total days added via extensions">
+                    +{totalExtendedDays} Extended {totalExtendedDays === 1 ? 'Day' : 'Days'}
+                  </span>
+                )}
+                {pendingLeavesCount > 0 && (
+                  <span 
+                    className="summary-pill pill-pending"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openHistoryWithFilter('pending')
+                    }}
+                    title="Leave applications under review"
+                  >
+                    ◷ {pendingLeavesCount} Pending
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="stat-card-data">
-              <span className="stat-card-label">Approved Absence</span>
-              <div className="stat-card-number">{totalDaysApproved} <small>Days</small></div>
-              <span className="stat-card-hint">Total Authorized Off &rarr;</span>
+
+            <div className="total-summary-cta-wrap">
+              <button 
+                type="button" 
+                className="total-summary-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openHistoryWithFilter('approved')
+                }}
+              >
+                <span>View Records</span>
+                <span className="cta-arrow">&rarr;</span>
+              </button>
             </div>
           </div>
         </section>
@@ -508,8 +621,13 @@ export default function LeaveRequest() {
                 <div className="stages-footer-item">
                   <span className="footer-label">TIMEFRAME</span>
                   <strong className="footer-val">
-                    {formatStudentDate(activeRequest.fromDate)} &rarr; {formatStudentDate(activeRequest.toDate)} ({getLeaveDuration(activeRequest.fromDate, activeRequest.toDate)})
+                    {formatStudentDate(activeRequest.fromDate)} &rarr; {formatStudentDate(activeRequest.actualReturnDate || activeRequest.toDate)} ({getLeaveDuration(activeRequest.fromDate, activeRequest.actualReturnDate || activeRequest.toDate)})
                   </strong>
+                  {activeRequest.actualReturnDate && activeRequest.originalToDate && activeRequest.actualReturnDate > activeRequest.originalToDate && (
+                    <span className="active-extended-pill" style={{ display: 'inline-block', marginTop: '4px', fontSize: '11px', color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', fontWeight: 'bold' }}>
+                      Extended from {formatStudentDate(activeRequest.originalToDate)} (+{getLeaveDaysCount(activeRequest.fromDate, activeRequest.actualReturnDate) - getLeaveDaysCount(activeRequest.fromDate, activeRequest.originalToDate)} d)
+                    </span>
+                  )}
                 </div>
 
                 <div className="stages-footer-item">
@@ -529,6 +647,19 @@ export default function LeaveRequest() {
                     )}
                   </strong>
                 </div>
+
+                {activeRequest.status === 'Approved' && !activeRequest.returnReportedAt && !activeRequest.closureClosedAt && (
+                  <div className="stages-footer-item footer-extend-action">
+                    <button
+                      type="button"
+                      className="btn-cadet-extend"
+                      onClick={() => handleOpenExtendModal(activeRequest)}
+                      title="Need extra time? Request an extension to adjust your leave days"
+                    >
+                      <span>🗓 Extend Leave</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -633,34 +764,7 @@ export default function LeaveRequest() {
           </section>
         )}
 
-        {/* DEFAULT OVERVIEW CARD: Shown when not creating, no active ongoing request, and history is not open */}
-        {!isCreating && !activeRequest && !showHistory && (
-          <section className="leave-ready-overview-card">
-            <div className="ready-card-icon-box">
-              ✈
-            </div>
-            <div className="ready-card-content">
-              <h3>Flight Training Schedule Clear</h3>
-              <p>You have no active pending leaves. Click <strong>History</strong> to review your previous approvals and records, or click <strong>Apply for Leave</strong> to schedule a new absence.</p>
-            </div>
-            <div className="ready-card-actions">
-              <button
-                type="button"
-                className="ready-btn-history"
-                onClick={() => openHistoryWithFilter('approved')}
-              >
-                <span>📜 View Previous Approvals ({approvedLeavesCount})</span>
-              </button>
-              <button
-                type="button"
-                className="ready-btn-apply"
-                onClick={startNewRequest}
-              >
-                <span>+ Apply for Leave</span>
-              </button>
-            </div>
-          </section>
-        )}
+
 
         {/* ==========================================================================
             LEAVE HISTORY RECORDS (ONLY SHOWN IF USER CLICKS "HISTORY"!)
@@ -787,9 +891,16 @@ export default function LeaveRequest() {
                           <div className="detail-dates-row">
                             <span className="detail-calendar-icon">🗓</span>
                             <span className="detail-dates-text">
-                              {formatStudentDate(req.fromDate)} &rarr; {formatStudentDate(req.toDate)}
+                              {formatStudentDate(req.fromDate)} &rarr; {formatStudentDate(req.actualReturnDate || req.toDate)}
                             </span>
-                            <span className="detail-duration-pill">{duration}</span>
+                            <span className="detail-duration-pill">
+                              {getLeaveDuration(req.fromDate, req.actualReturnDate || req.toDate)}
+                            </span>
+                            {req.actualReturnDate && req.toDate && req.actualReturnDate !== req.toDate && (
+                              <span style={{ fontSize: '11px', color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: '6px', fontWeight: 'bold' }}>
+                                Adjusted from {formatStudentDate(req.toDate)}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -841,7 +952,7 @@ export default function LeaveRequest() {
 
                           {isClosed && (
                             <span className="card-closed-pill">
-                              ✓ Stage 4 Complete: Leave Closed &amp; Returned
+                              ✓ Stage 4 Complete: Closed &amp; Returned on {formatStudentDate(req.actualReturnDate || req.toDate)}
                             </span>
                           )}
                         </div>
@@ -867,6 +978,116 @@ export default function LeaveRequest() {
               )}
             </div>
           </section>
+        )}
+
+        {/* Cadet Leave Extension Modal */}
+        {extendingRequest && (
+          <div className="leave-closure-modal-overlay" onClick={() => !isSubmittingExtension && setExtendingRequest(null)}>
+            <div className="leave-closure-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+              <div className="closure-modal-header">
+                <div className="modal-header-badge">
+                  <span className="live-pulse-cyan" />
+                  <span>FLIGHT CADET EXTENSION REQUEST</span>
+                </div>
+                <h2>Extend Leave Return Date</h2>
+                <p>Select your revised return date to adjust your authorized leave days in the Academy roster.</p>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => !isSubmittingExtension && setExtendingRequest(null)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmExtend} className="closure-modal-body">
+                <div className="closure-schedule-grid" style={{ marginBottom: '16px' }}>
+                  <div className="schedule-box box-original">
+                    <span className="schedule-label">CURRENT APPROVED SCHEDULE</span>
+                    <div className="schedule-dates">
+                      <span>{formatStudentDate(extendingRequest.fromDate)} &rarr; {formatStudentDate(extendingRequest.actualReturnDate || extendingRequest.toDate)}</span>
+                    </div>
+                    <span className="schedule-duration-tag">
+                      Current Duration: <strong>{getLeaveDaysCount(extendingRequest.fromDate, extendingRequest.actualReturnDate || extendingRequest.toDate)} Days</strong>
+                    </span>
+                  </div>
+
+                  <div className="schedule-box box-actual">
+                    <label className="schedule-label" htmlFor="extend-date-input">
+                      NEW EXTENDED RETURN DATE <span className="req-star">*</span>
+                    </label>
+                    <input
+                      id="extend-date-input"
+                      type="date"
+                      className="closure-date-input"
+                      value={extendedNewDate}
+                      min={extendingRequest.actualReturnDate || extendingRequest.toDate}
+                      onChange={(e) => {
+                        setExtendedNewDate(e.target.value)
+                        setExtensionError('')
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {extendedNewDate && extendedNewDate > (extendingRequest.actualReturnDate || extendingRequest.toDate) && (
+                  <div className="closure-adjustment-preview extended" style={{ margin: '14px 0' }}>
+                    <div className="adj-preview-row">
+                      <span className="adj-label">Adjusted Leave Total:</span>
+                      <strong className="adj-days-value">
+                        {getLeaveDaysCount(extendingRequest.fromDate, extendedNewDate)} Days
+                      </strong>
+                      <span className="adj-badge-status badge-extended">
+                        +{getLeaveDaysCount(extendingRequest.fromDate, extendedNewDate) - getLeaveDaysCount(extendingRequest.fromDate, extendingRequest.actualReturnDate || extendingRequest.toDate)} Days Extended
+                      </span>
+                    </div>
+                    <small className="adj-help-text">
+                      Total Number of Leaves will automatically adjust to include these {getLeaveDaysCount(extendingRequest.fromDate, extendedNewDate) - getLeaveDaysCount(extendingRequest.fromDate, extendingRequest.actualReturnDate || extendingRequest.toDate)} additional days.
+                    </small>
+                  </div>
+                )}
+
+                <div className="leave-input-group" style={{ marginTop: '12px' }}>
+                  <label htmlFor="cadet-extension-reason">
+                    <span>Reason for Extension</span>
+                  </label>
+                  <input
+                    id="cadet-extension-reason"
+                    type="text"
+                    className="leave-field-input"
+                    placeholder="e.g. DGCA Theory Exam Rescheduled, Travel Delay, Family Necessity..."
+                    value={extensionReason}
+                    onChange={(e) => setExtensionReason(e.target.value)}
+                  />
+                </div>
+
+                {extensionError && (
+                  <div className="leave-error-box" style={{ marginTop: '12px' }}>
+                    ⚠️ {extensionError}
+                  </div>
+                )}
+
+                <div className="closure-modal-footer" style={{ marginTop: '22px' }}>
+                  <button
+                    type="button"
+                    className="btn-modal-cancel"
+                    onClick={() => setExtendingRequest(null)}
+                    disabled={isSubmittingExtension}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-modal-confirm-closure"
+                    disabled={isSubmittingExtension || extendedNewDate <= (extendingRequest.actualReturnDate || extendingRequest.toDate)}
+                  >
+                    {isSubmittingExtension ? 'Updating Leave Days...' : '✓ Confirm Extension & Adjust Days'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
 
       </div>

@@ -114,8 +114,25 @@ export default function StudentDashboard() {
   const cplProgressPercent = Math.min(100, Math.round((totalFlightHours / cplTarget) * 100))
 
   const latestLeave = leaveRequests[0] || null
-  const approvedLeavesCount = leaveRequests.filter((l) => l.status === 'Approved').length
+  const approvedLeavesCount = leaveRequests.filter((l) => l.status === 'Approved' || l.status === 'Closed').length
   const pendingLeavesCount = leaveRequests.filter((l) => l.status === 'Pending approval').length
+
+  const getLeaveDaysCount = (fromDate, toDate) => {
+    if (!fromDate || !toDate) return 0
+    const start = new Date(`${fromDate}T00:00:00`)
+    const end = new Date(`${toDate}T00:00:00`)
+    const diff = end - start
+    if (Number.isNaN(diff) || diff < 0) return 0
+    return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1
+  }
+
+  const totalLeaveDaysTaken = leaveRequests
+    .filter((l) => l.status === 'Approved' || l.status === 'Closed')
+    .reduce((sum, l) => {
+      const returnDate = l.actual_return_date || l.actualReturnDate || l.to_date || l.toDate
+      const fromDate = l.from_date || l.fromDate
+      return sum + getLeaveDaysCount(fromDate, returnDate)
+    }, 0)
 
   const todaySubmission = flightSubmissions.find(
     (sub) => sub.flight_date === selectedFlightDate || sub.flight_date === new Date().toISOString().split('T')[0]
@@ -301,7 +318,7 @@ export default function StudentDashboard() {
                 📝
               </div>
               <span className="module-badge badge-leave">
-                {pendingLeavesCount > 0 ? `${pendingLeavesCount} Pending` : `${approvedLeavesCount} Approved`}
+                {pendingLeavesCount > 0 ? `${pendingLeavesCount} Pending` : `${totalLeaveDaysTaken} Leaves Taken`}
               </span>
             </div>
 
@@ -313,8 +330,8 @@ export default function StudentDashboard() {
 
               <div className="module-live-meta">
                 {latestLeave ? (
-                  <div className={`module-status-chip ${latestLeave.status === 'Approved' ? 'chip-success' : latestLeave.status === 'Rejected' ? 'chip-danger' : 'chip-warning'}`}>
-                    <span>{latestLeave.status}: {latestLeave.from_date || latestLeave.fromDate} to {latestLeave.to_date || latestLeave.toDate}</span>
+                  <div className={`module-status-chip ${latestLeave.status === 'Approved' || latestLeave.status === 'Closed' ? 'chip-success' : latestLeave.status === 'Rejected' ? 'chip-danger' : 'chip-warning'}`}>
+                    <span>{latestLeave.status === 'Closed' ? '✓ Closed' : latestLeave.status}: {latestLeave.from_date || latestLeave.fromDate} to {latestLeave.actual_return_date || latestLeave.actualReturnDate || latestLeave.to_date || latestLeave.toDate}</span>
                   </div>
                 ) : (
                   <div className="module-status-chip chip-neutral">

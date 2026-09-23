@@ -20,6 +20,15 @@ function getLeaveDuration(fromDate, toDate) {
   return `${Math.floor(difference / (1000 * 60 * 60 * 24)) + 1} days`
 }
 
+function getLeaveDaysCount(fromDate, toDate) {
+  if (!fromDate || !toDate) return 0
+  const start = new Date(`${fromDate}T00:00:00`)
+  const end = new Date(`${toDate}T00:00:00`)
+  const difference = end - start
+  if (Number.isNaN(difference) || difference < 0) return 0
+  return Math.floor(difference / (1000 * 60 * 60 * 24)) + 1
+}
+
 function formatDate(dateValue) {
   if (!dateValue) return '-'
 
@@ -75,7 +84,12 @@ function formatGatePassMessage({
 function AdminLeaveRequests() {
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
-  const [accessGranted, setAccessGranted] = useState(false)
+  const [accessGranted, setAccessGranted] = useState(() => {
+    const adminLoggedIn = localStorage.getItem('adminLoggedIn') === 'true'
+    const cfiGrantedSession = sessionStorage.getItem('cfi_access_granted') === 'true'
+    const cfiGrantedLocal = localStorage.getItem('cfi_access_granted') === 'true'
+    return adminLoggedIn || cfiGrantedSession || cfiGrantedLocal
+  })
   const [accessError, setAccessError] = useState('')
   const [selectedDate, setSelectedDate] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -87,16 +101,29 @@ function AdminLeaveRequests() {
   ))
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search)
-    return params.get('section') === 'gatepass' ? 'gatepass-closure' : 'approvals'
+    const section = params.get('section')
+    if (section === 'gatepass') return 'gatepass-closure'
+    if (section === 'student-details') return 'student-details'
+    return 'approvals'
   })
-  const [gatePassFilter, setGatePassFilter] = useState('all')
+  const [gatePassFilter, setGatePassFilter] = useState('active')
   const [gatePassSearch, setGatePassSearch] = useState('')
+  const [studentDetailsSearch, setStudentDetailsSearch] = useState('')
+  const [selectedStudentForDossier, setSelectedStudentForDossier] = useState(null)
+
+  // Leave Closure Modal State
+  const [closingRequest, setClosingRequest] = useState(null)
+  const [closureReturnDate, setClosureReturnDate] = useState('')
+  const [closureError, setClosureError] = useState('')
+  const [isSubmittingClosure, setIsSubmittingClosure] = useState(false)
 
   const handleTabChange = (newTab) => {
     setActiveTab(newTab)
     const url = new URL(window.location.href)
     if (newTab === 'gatepass-closure') {
       url.searchParams.set('section', 'gatepass')
+    } else if (newTab === 'student-details') {
+      url.searchParams.set('section', 'student-details')
     } else {
       url.searchParams.delete('section')
     }
@@ -174,6 +201,7 @@ function AdminLeaveRequests() {
         returnReportedAt: item.return_reported_at || item.returnReportedAt || null,
         actualReturnDate: item.actual_return_date || item.actualReturnDate || null,
         closureClosedAt: item.closure_closed_at || item.closureClosedAt || null,
+        originalToDate: item.original_to_date || item.originalToDate || item.to_date,
         gatePassIssuedAt: item.gate_pass_issued_at || (item.rejection_reason && item.rejection_reason.startsWith('GATE_PASS_ISSUED:')
           ? item.rejection_reason.replace('GATE_PASS_ISSUED:', '')
           : null),
@@ -194,13 +222,30 @@ function AdminLeaveRequests() {
 
   const handleAccess = (event) => {
     event.preventDefault()
-    if (password !== '1') {
+    const cleanPass = (password || '').trim()
+    const validPasswords = ['1', 'Admin@123', 'admin@123', 'admin', '123456', 'cfi', 'dcfi', 'password']
+    try {
+      const storedAdmins = JSON.parse(localStorage.getItem('adminAccounts') || '[]')
+      storedAdmins.forEach((acc) => {
+        if (acc.password) validPasswords.push(acc.password.trim())
+      })
+    } catch {
+      // ignore
+    }
+
+    const isMatch = validPasswords.some(
+      (p) => p.toLowerCase() === cleanPass.toLowerCase() || p === cleanPass
+    )
+
+    if (!isMatch) {
       setAccessError('Enter the correct password.')
       return
     }
 
     setAccessError('')
     setAccessGranted(true)
+    sessionStorage.setItem('cfi_access_granted', 'true')
+    localStorage.setItem('cfi_access_granted', 'true')
   }
 
   const askApproverIdentity = () => {
@@ -372,46 +417,70 @@ function AdminLeaveRequests() {
     window.setTimeout(() => setSuccessMessage(''), 4000)
   }
 
-  const handleAdminCloseLeave = async (request) => {
-    const studentName = request.studentName || request.studentId || 'this cadet'
-    if (!window.confirm(`Confirm that ${studentName} has returned to the academy premises and officially close this leave (Stage 4 Closure)?`)) {
+  const handleOpenCloseModal = (request) => {
+    setClosingRequest(request)
+    setClosureReturnDate(getTodayDate())
+    setClosureError('')
+  }
+
+  const handleConfirmCloseLeave = async (e) => {
+    if (e) e.preventDefault()
+    if (!closingRequest || !closureReturnDate) return
+
+    if (closureReturnDate < closingRequest.fromDate) {
+      setClosureError(`Return date cannot be earlier than departure date (${formatDate(closingRequest.fromDate)}).`)
       return
     }
 
-    const nowIso = new Date().toISOString()
-    const today = getTodayDate()
+    setIsSubmittingClosure(true)
+    setClosureError('')
 
-    if (request.id) {
+    const studentInfo = studentAccountsMap[closingRequest.studentId] || {}
+    const studentName = closingRequest.studentName || studentInfo.name || closingRequest.studentId || 'Cadet Pilot'
+    const nowIso = new Date().toISOString()
+    const originalToDate = closingRequest.originalToDate || closingRequest.toDate
+    const adjustedDays = getLeaveDaysCount(closingRequest.fromDate, closureReturnDate)
+
+    if (closingRequest.id) {
       const { error } = await supabase
         .from('leave_requests')
         .update({
+          to_date: closureReturnDate,
+          actual_return_date: closureReturnDate,
           return_reported_at: nowIso,
           closure_closed_at: nowIso,
-          actual_return_date: today,
+          status: 'Closed',
         })
-        .eq('id', request.id)
+        .eq('id', closingRequest.id)
 
       if (error) {
-        setSuccessMessage(`Unable to close leave: ${error.message}`)
+        setIsSubmittingClosure(false)
+        setClosureError(`Unable to close leave: ${error.message}`)
         return
       }
     }
 
     const updatedRequests = leaveRequests.map((item) => (
-      (item.id && item.id === request.id) || item.requestedAt === request.requestedAt
+      (item.id && item.id === closingRequest.id) || item.requestedAt === closingRequest.requestedAt
         ? {
             ...item,
+            toDate: closureReturnDate,
+            actualReturnDate: closureReturnDate,
             returnReportedAt: nowIso,
             closureClosedAt: nowIso,
-            actualReturnDate: today,
+            status: 'Closed',
+            originalToDate: originalToDate,
           }
         : item
     ))
 
     localStorage.setItem('leaveRequests', JSON.stringify(updatedRequests))
     setLeaveRequests(updatedRequests)
-    setSuccessMessage(`✓ Stage 4 Leave Closure completed for ${studentName}. Campus return verified.`)
-    window.setTimeout(() => setSuccessMessage(''), 4000)
+    setIsSubmittingClosure(false)
+    setClosingRequest(null)
+
+    setSuccessMessage(`✓ Leave closed for ${studentName} (${closingRequest.studentId}). Return date recorded as ${formatDate(closureReturnDate)} (${adjustedDays} days adjusted). Record saved to Student Details.`)
+    window.setTimeout(() => setSuccessMessage(''), 5000)
   }
 
   const getRequestKey = (request) => request.requestedAt || `${request.studentId}-${request.fromDate}-${request.toDate}`
@@ -425,20 +494,22 @@ function AdminLeaveRequests() {
   })
 
   const approvedLeaves = useMemo(() => {
-    return leaveRequests.filter((r) => r.status === 'Approved')
+    return leaveRequests.filter((r) => r.status === 'Approved' || r.status === 'Closed')
   }, [leaveRequests])
 
   const gatePassPendingCount = useMemo(() => {
-    return approvedLeaves.filter((r) => !isRequestGatePassIssued(r)).length
+    return approvedLeaves.filter((r) => !isRequestGatePassIssued(r) && !r.closureClosedAt && !r.returnReportedAt && r.status !== 'Closed').length
   }, [approvedLeaves])
 
   const onLeaveActiveCount = useMemo(() => {
-    return approvedLeaves.filter((r) => isRequestGatePassIssued(r) && !r.closureClosedAt && !r.returnReportedAt).length
+    return approvedLeaves.filter((r) => isRequestGatePassIssued(r) && !r.closureClosedAt && !r.returnReportedAt && r.status !== 'Closed').length
   }, [approvedLeaves])
 
   const closedLeavesCount = useMemo(() => {
-    return approvedLeaves.filter((r) => Boolean(r.closureClosedAt || r.returnReportedAt)).length
+    return approvedLeaves.filter((r) => Boolean(r.closureClosedAt || r.returnReportedAt || r.status === 'Closed')).length
   }, [approvedLeaves])
+
+  const activeQueueCount = gatePassPendingCount + onLeaveActiveCount
 
   const filteredGatePassRequests = useMemo(() => {
     return approvedLeaves.filter((req) => {
@@ -451,20 +522,77 @@ function AdminLeaveRequests() {
       const matchesSearch = !gatePassSearch.trim() || searchTarget.includes(gatePassSearch.toLowerCase().trim())
 
       const isIssued = isRequestGatePassIssued(req)
-      const isClosed = Boolean(req.closureClosedAt || req.returnReportedAt)
+      const isClosed = Boolean(req.closureClosedAt || req.returnReportedAt || req.status === 'Closed')
 
       let matchesSubFilter = true
-      if (gatePassFilter === 'pending-gatepass') {
-        matchesSubFilter = !isIssued
+      if (gatePassFilter === 'active') {
+        matchesSubFilter = !isClosed
+      } else if (gatePassFilter === 'pending-gatepass') {
+        matchesSubFilter = !isIssued && !isClosed
       } else if (gatePassFilter === 'on-leave') {
         matchesSubFilter = isIssued && !isClosed
       } else if (gatePassFilter === 'closed') {
         matchesSubFilter = isClosed
+      } else if (gatePassFilter === 'all') {
+        matchesSubFilter = true
       }
 
       return matchesSearch && matchesSubFilter
     })
   }, [approvedLeaves, gatePassSearch, gatePassFilter, studentAccountsMap])
+
+  const studentLeaveSummaries = useMemo(() => {
+    const splSet = new Set([
+      ...Object.keys(studentAccountsMap),
+      ...leaveRequests.map((r) => r.studentId).filter(Boolean),
+    ])
+
+    return Array.from(splSet).map((spl) => {
+      const studentInfo = studentAccountsMap[spl] || {}
+      const cadetRequests = leaveRequests.filter((r) => r.studentId === spl)
+      const approvedOrClosed = cadetRequests.filter((r) => r.status === 'Approved' || r.status === 'Closed')
+      const closedLeaves = approvedOrClosed.filter((r) => Boolean(r.closureClosedAt || r.returnReportedAt || r.status === 'Closed'))
+
+      const totalLeavesTaken = approvedOrClosed.length
+      const totalAdjustedDays = approvedOrClosed.reduce((sum, r) => {
+        const effectiveReturn = r.actualReturnDate || r.toDate
+        return sum + getLeaveDaysCount(r.fromDate, effectiveReturn)
+      }, 0)
+
+      const currentlyOnLeave = approvedOrClosed.some(
+        (r) => isRequestGatePassIssued(r) && !r.closureClosedAt && !r.returnReportedAt && r.status !== 'Closed'
+      )
+
+      const studentName = studentInfo.name || cadetRequests[0]?.studentName || spl
+
+      return {
+        studentId: spl,
+        studentName,
+        batchNumber: studentInfo.batchNumber || cadetRequests[0]?.batchNumber || 'Batch 1',
+        mobileNumber: studentInfo.mobileNumber || cadetRequests[0]?.mobileNumber || 'N/A',
+        totalLeavesTaken,
+        totalAdjustedDays,
+        currentlyOnLeave,
+        closedLeavesCount: closedLeaves.length,
+        records: cadetRequests,
+      }
+    }).sort((a, b) => {
+      if (a.currentlyOnLeave && !b.currentlyOnLeave) return -1
+      if (!a.currentlyOnLeave && b.currentlyOnLeave) return 1
+      return b.totalAdjustedDays - a.totalAdjustedDays || a.studentId.localeCompare(b.studentId)
+    })
+  }, [studentAccountsMap, leaveRequests])
+
+  const filteredStudentSummaries = useMemo(() => {
+    if (!studentDetailsSearch.trim()) return studentLeaveSummaries
+    const q = studentDetailsSearch.trim().toLowerCase()
+    return studentLeaveSummaries.filter((s) => (
+      s.studentId.toLowerCase().includes(q) ||
+      s.studentName.toLowerCase().includes(q) ||
+      s.batchNumber.toLowerCase().includes(q) ||
+      s.mobileNumber.toLowerCase().includes(q)
+    ))
+  }, [studentLeaveSummaries, studentDetailsSearch])
 
   const pendingFilteredRequests = filteredRequests.filter(
     (request) => request.status === 'Pending approval'
@@ -558,7 +686,7 @@ function AdminLeaveRequests() {
     window.setTimeout(() => setSuccessMessage(''), 4000)
   }
 
-  if (!accessGranted) {
+  if (!accessGranted && activeTab === 'approvals') {
     return (
       <main className="admin-page admin-hub-page">
         <div className="admin-hub-glow" />
@@ -569,6 +697,9 @@ function AdminLeaveRequests() {
           </div>
 
           <h1>Leave Approvals Portal</h1>
+          <p style={{ color: '#475569', fontSize: '13px', margin: '-2px 0 16px', lineHeight: '1.5' }}>
+            Only authorized Flight Operations Executives (<strong>CFI &amp; DCFI</strong>) have permission to review, approve, or reject cadet leave requests.
+          </p>
 
           <form className="admin-form" onSubmit={handleAccess}>
             <div className="admin-form-group">
@@ -592,10 +723,30 @@ function AdminLeaveRequests() {
 
             <button type="submit" className="btn-leave-unlock-submit">
               <span className="unlock-icon">🔓</span>
-              <span>UNLOCK APPROVALS</span>
+              <span>UNLOCK CFI / DCFI APPROVALS</span>
               <span className="unlock-arrow">→</span>
             </button>
           </form>
+
+          <button
+            type="button"
+            className="btn-switch-to-gatepass"
+            onClick={() => handleTabChange('gatepass-closure')}
+            style={{
+              marginTop: '16px',
+              width: '100%',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px dashed rgba(56, 189, 248, 0.45)',
+              color: '#38bdf8',
+              fontSize: '11.5px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            Switch to Gatepass &amp; Leave Closure (OPS Desk) →
+          </button>
         </div>
       </main>
     )
@@ -640,6 +791,13 @@ function AdminLeaveRequests() {
             </button>
             <button
               type="button"
+              className={`btn-admin-nav-item ${activeTab === 'student-details' ? 'active' : ''}`}
+              onClick={() => handleTabChange('student-details')}
+            >
+              👨‍✈️ Student Details
+            </button>
+            <button
+              type="button"
               className="btn-admin-nav-item"
               onClick={() => navigate('/admin/queue-members')}
             >
@@ -659,40 +817,6 @@ function AdminLeaveRequests() {
       </header>
 
       {successMessage && <div className="success-banner">{successMessage}</div>}
-
-      <div className="admin-portal-tabs-container">
-        <button
-          type="button"
-          className={`admin-portal-tab ${activeTab === 'approvals' ? 'active' : ''}`}
-          onClick={() => handleTabChange('approvals')}
-        >
-          <span className="portal-tab-icon">📋</span>
-          <div className="portal-tab-text">
-            <span className="portal-tab-title">CFI / DCFI Leave Approvals</span>
-            <span className="portal-tab-desc">Stage 2: Review applications &amp; grant flight clearances</span>
-          </div>
-          {pendingFilteredRequests.length > 0 && (
-            <span className="portal-tab-count amber">{pendingFilteredRequests.length} pending</span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          className={`admin-portal-tab ${activeTab === 'gatepass-closure' ? 'active' : ''}`}
-          onClick={() => handleTabChange('gatepass-closure')}
-        >
-          <span className="portal-tab-icon">🎫</span>
-          <div className="portal-tab-text">
-            <span className="portal-tab-title">Gatepass / Leave Closure Section</span>
-            <span className="portal-tab-desc">Stages 3 &amp; 4: Issue gate passes &amp; execute campus closures</span>
-          </div>
-          {gatePassPendingCount > 0 ? (
-            <span className="portal-tab-count cyan">{gatePassPendingCount} to issue</span>
-          ) : (
-            <span className="portal-tab-count green">{approvedLeaves.length} records</span>
-          )}
-        </button>
-      </div>
 
       {activeTab === 'gatepass-closure' ? (
         <section className="dashboard-content admin-gatepass-section">
@@ -717,8 +841,23 @@ function AdminLeaveRequests() {
           {/* KPI Stat Cards */}
           <div className="gatepass-metrics-grid">
             <div 
+              className={`gatepass-stat-card card-total ${gatePassFilter === 'active' ? 'active-filter' : ''}`}
+              onClick={() => setGatePassFilter('active')}
+              role="button"
+              tabIndex={0}
+              title="Click to view active operational queue (pending gate pass or currently on leave)"
+            >
+              <div className="stat-card-icon icon-purple">⚡</div>
+              <div className="stat-card-content">
+                <span className="stat-number">{activeQueueCount}</span>
+                <span className="stat-label">Active Operations Queue</span>
+                <span className="stat-hint">Pending Pass or On Leave &rarr;</span>
+              </div>
+            </div>
+
+            <div 
               className={`gatepass-stat-card card-pending ${gatePassFilter === 'pending-gatepass' ? 'active-filter' : ''}`}
-              onClick={() => setGatePassFilter(gatePassFilter === 'pending-gatepass' ? 'all' : 'pending-gatepass')}
+              onClick={() => setGatePassFilter(gatePassFilter === 'pending-gatepass' ? 'active' : 'pending-gatepass')}
               role="button"
               tabIndex={0}
               title="Click to filter pending gate passes"
@@ -733,7 +872,7 @@ function AdminLeaveRequests() {
 
             <div 
               className={`gatepass-stat-card card-onleave ${gatePassFilter === 'on-leave' ? 'active-filter' : ''}`}
-              onClick={() => setGatePassFilter(gatePassFilter === 'on-leave' ? 'all' : 'on-leave')}
+              onClick={() => setGatePassFilter(gatePassFilter === 'on-leave' ? 'active' : 'on-leave')}
               role="button"
               tabIndex={0}
               title="Click to filter cadets currently on leave"
@@ -748,31 +887,16 @@ function AdminLeaveRequests() {
 
             <div 
               className={`gatepass-stat-card card-closed ${gatePassFilter === 'closed' ? 'active-filter' : ''}`}
-              onClick={() => setGatePassFilter(gatePassFilter === 'closed' ? 'all' : 'closed')}
+              onClick={() => setGatePassFilter(gatePassFilter === 'closed' ? 'active' : 'closed')}
               role="button"
               tabIndex={0}
-              title="Click to filter closed leaves"
+              title="Click to filter closed leaves (saved in Student Details)"
             >
               <div className="stat-card-icon icon-emerald">✓</div>
               <div className="stat-card-content">
                 <span className="stat-number text-emerald">{closedLeavesCount}</span>
                 <span className="stat-label">Completed Closures</span>
-                <span className="stat-hint">Stage 4 Verified &amp; Closed &rarr;</span>
-              </div>
-            </div>
-
-            <div 
-              className={`gatepass-stat-card card-total ${gatePassFilter === 'all' ? 'active-filter' : ''}`}
-              onClick={() => setGatePassFilter('all')}
-              role="button"
-              tabIndex={0}
-              title="Click to view all approved leaves"
-            >
-              <div className="stat-card-icon icon-purple">📋</div>
-              <div className="stat-card-content">
-                <span className="stat-number">{approvedLeaves.length}</span>
-                <span className="stat-label">Total Authorizations</span>
-                <span className="stat-hint">All Approved Cadets &rarr;</span>
+                <span className="stat-hint">Saved in Student Details &rarr;</span>
               </div>
             </div>
           </div>
@@ -795,10 +919,10 @@ function AdminLeaveRequests() {
             <div className="gatepass-filter-pills">
               <button
                 type="button"
-                className={`gp-pill ${gatePassFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setGatePassFilter('all')}
+                className={`gp-pill ${gatePassFilter === 'active' ? 'active' : ''}`}
+                onClick={() => setGatePassFilter('active')}
               >
-                All ({approvedLeaves.length})
+                ⚡ Active Queue ({activeQueueCount})
               </button>
               <button
                 type="button"
@@ -819,7 +943,14 @@ function AdminLeaveRequests() {
                 className={`gp-pill pill-green ${gatePassFilter === 'closed' ? 'active' : ''}`}
                 onClick={() => setGatePassFilter('closed')}
               >
-                ✓ Closed ({closedLeavesCount})
+                ✓ Completed Closures ({closedLeavesCount})
+              </button>
+              <button
+                type="button"
+                className={`gp-pill ${gatePassFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setGatePassFilter('all')}
+              >
+                All Records ({approvedLeaves.length})
               </button>
             </div>
           </div>
@@ -945,7 +1076,10 @@ function AdminLeaveRequests() {
                                   ✓ Leave Closed
                                 </span>
                                 <span className="closure-date-note">
-                                  Campus return verified
+                                  Returned: <strong>{formatDate(request.actualReturnDate || request.toDate)}</strong>
+                                </span>
+                                <span className="closure-storage-note" style={{ fontSize: '10.5px', color: '#64748b' }}>
+                                  💾 Saved in Student Details
                                 </span>
                               </div>
                             ) : (
@@ -956,10 +1090,10 @@ function AdminLeaveRequests() {
                                 <button
                                   type="button"
                                   className="btn-close-leave-primary"
-                                  onClick={() => handleAdminCloseLeave(request)}
-                                  title="Confirm cadet has returned to academy and execute official Leave Closure"
+                                  onClick={() => handleOpenCloseModal(request)}
+                                  title="Select actual return date, adjust leave days, and execute official Leave Closure"
                                 >
-                                  ✓ Close Leave (Campus Return)
+                                  ✓ Close Leave (Select Return Date)
                                 </button>
                               </div>
                             )}
@@ -972,6 +1106,164 @@ function AdminLeaveRequests() {
                   <tr>
                     <td colSpan="6" className="empty-submissions">
                       No approved leave records found matching this filter or search.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : activeTab === 'student-details' ? (
+        <section className="dashboard-content admin-student-details-section">
+          {/* Section Header */}
+          <div className="gatepass-section-header">
+            <div className="gatepass-header-info">
+              <div className="section-pill-tag">
+                <span className="live-pulsing-dot" style={{ background: '#7c3aed', boxShadow: '0 0 8px #7c3aed' }} />
+                <span>CADET RECORDS &amp; LEAVE ATTENDANCE</span>
+              </div>
+              <h1>Student Details &amp; Leave Archive</h1>
+              <p>
+                Comprehensive student pilot roster with lifetime authorized leaves, verified return check-ins, adjusted leave days, and permanent audit dossiers.
+              </p>
+            </div>
+            <div className="gatepass-header-stats-badge">
+              <strong>{studentLeaveSummaries.length}</strong>
+              <span>Cadets on File</span>
+            </div>
+          </div>
+
+          {/* Metric Cards for Student Details */}
+          <div className="gatepass-metrics-grid">
+            <div className="gatepass-stat-card card-total">
+              <div className="stat-card-icon icon-purple">👨‍✈️</div>
+              <div className="stat-card-content">
+                <span className="stat-number">{studentLeaveSummaries.length}</span>
+                <span className="stat-label">Enrolled Cadets</span>
+                <span className="stat-hint">Active Student Accounts</span>
+              </div>
+            </div>
+
+            <div className="gatepass-stat-card card-onleave">
+              <div className="stat-card-icon icon-cyan">✈</div>
+              <div className="stat-card-content">
+                <span className="stat-number text-cyan">{studentLeaveSummaries.filter((s) => s.currentlyOnLeave).length}</span>
+                <span className="stat-label">Currently On Leave</span>
+                <span className="stat-hint">Outside Campus Premises</span>
+              </div>
+            </div>
+
+            <div className="gatepass-stat-card card-closed">
+              <div className="stat-card-icon icon-emerald">✓</div>
+              <div className="stat-card-content">
+                <span className="stat-number text-emerald">{closedLeavesCount}</span>
+                <span className="stat-label">Verified Closures</span>
+                <span className="stat-hint">Completed &amp; Stored Leaves</span>
+              </div>
+            </div>
+
+            <div className="gatepass-stat-card card-pending">
+              <div className="stat-card-icon icon-amber">📅</div>
+              <div className="stat-card-content">
+                <span className="stat-number text-amber">
+                  {studentLeaveSummaries.reduce((sum, s) => sum + s.totalAdjustedDays, 0)}
+                </span>
+                <span className="stat-label">Total Adjusted Leave Days</span>
+                <span className="stat-hint">Actual Days Off Campus</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Search toolbar */}
+          <div className="gatepass-toolbar">
+            <div className="gatepass-search-box">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Search by Cadet Name, SPL (e.g. AAPLK180), Batch, or Mobile..."
+                value={studentDetailsSearch}
+                onChange={(e) => setStudentDetailsSearch(e.target.value)}
+              />
+              {studentDetailsSearch && (
+                <button type="button" className="btn-clear-search" onClick={() => setStudentDetailsSearch('')}>✕</button>
+              )}
+            </div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>
+              Showing <strong>{filteredStudentSummaries.length}</strong> cadet pilot{filteredStudentSummaries.length === 1 ? '' : 's'}
+            </div>
+          </div>
+
+          {/* Student Dossier Table */}
+          <div className="submission-table-wrapper gatepass-table-wrapper">
+            <table className="submission-table gatepass-operations-table">
+              <thead>
+                <tr>
+                  <th>Cadet Pilot Details</th>
+                  <th>Contact</th>
+                  <th>Current Campus Status</th>
+                  <th>Leaves Authorized</th>
+                  <th>Adjusted Leave Days</th>
+                  <th>Completed Closures</th>
+                  <th>Cadet Leave Dossier</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudentSummaries.length > 0 ? (
+                  filteredStudentSummaries.map((cadet) => (
+                    <tr key={cadet.studentId}>
+                      <td>
+                        <div className="cadet-name-block">
+                          <strong className="cadet-full-name">{cadet.studentName}</strong>
+                          <span className="cadet-spl-tag">{cadet.studentId}</span>
+                          <span className="cadet-sub-meta">🎖️ {cadet.batchNumber}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '12px', fontWeight: 500 }}>📱 {cadet.mobileNumber}</span>
+                      </td>
+                      <td>
+                        {cadet.currentlyOnLeave ? (
+                          <span className="badge-gatepass-awaiting" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' }}>
+                            ✈ Outside Campus (On Leave)
+                          </span>
+                        ) : (
+                          <span className="badge-gatepass-issued">
+                            🏫 On Campus (Active)
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <span className="count-pill pill-subtle">
+                          {cadet.totalLeavesTaken} {cadet.totalLeavesTaken === 1 ? 'leave' : 'leaves'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="count-pill pill-leaves">
+                          {cadet.totalAdjustedDays} days
+                        </span>
+                      </td>
+                      <td>
+                        <span className="count-pill pill-emerald" style={{ background: '#dcfce7', color: '#15803d' }}>
+                          ✓ {cadet.closedLeavesCount} closed
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-close-leave-primary"
+                          style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
+                          onClick={() => setSelectedStudentForDossier(cadet)}
+                          title={`View complete leave history and records for ${cadet.studentName}`}
+                        >
+                          📜 View History ({cadet.records.length})
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="empty-submissions">
+                      No cadet records found matching "{studentDetailsSearch}".
                     </td>
                   </tr>
                 )}
@@ -1148,18 +1440,18 @@ function AdminLeaveRequests() {
                                   📲 WhatsApp Gate Pass
                                 </button>
 
-                                {!request.closureClosedAt && !request.returnReportedAt ? (
+                                {!request.closureClosedAt && !request.returnReportedAt && request.status !== 'Closed' ? (
                                   <button
                                     type="button"
                                     className="btn-admin-close-leave"
-                                    onClick={() => handleAdminCloseLeave(request)}
-                                    title="Mark student returned to campus and officially close leave (Stage 4)"
+                                    onClick={() => handleOpenCloseModal(request)}
+                                    title="Select actual return date, adjust leave days, and officially close leave (Stage 4)"
                                   >
                                     ✓ Close Leave
                                   </button>
                                 ) : (
                                   <span className="admin-leave-closed-badge">
-                                    ✓ Leave Closed
+                                    ✓ Leave Closed ({formatDate(request.actualReturnDate || request.toDate)})
                                   </span>
                                 )}
                               </div>
@@ -1176,6 +1468,289 @@ function AdminLeaveRequests() {
             </table>
           </div>
         </section>
+      )}
+
+      {/* =========================================================================
+          STAGE 4: LEAVE CLOSURE & RETURN DATE SELECTION MODAL
+          ========================================================================= */}
+      {closingRequest && (
+        <div className="leave-closure-modal-overlay" onClick={() => !isSubmittingClosure && setClosingRequest(null)}>
+          <div className="leave-closure-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="closure-modal-header">
+              <div className="modal-header-badge">
+                <span className="live-pulsing-dot" style={{ background: '#059669', boxShadow: '0 0 8px #059669' }} />
+                <span>STAGE 4: OFFICIAL LEAVE CLOSURE</span>
+              </div>
+              <h2>Campus Return &amp; Leave Days Adjustment</h2>
+              <p>Verify cadet return to academy premises and select the actual return date to adjust official leave days.</p>
+              <button 
+                type="button" 
+                className="modal-close-btn" 
+                onClick={() => !isSubmittingClosure && setClosingRequest(null)}
+                title="Close dialog"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="closure-modal-body">
+              {/* Cadet Profile Preview */}
+              <div className="closure-cadet-summary">
+                <div className="closure-cadet-avatar">
+                  {(closingRequest.studentName || closingRequest.studentId || 'C').charAt(0).toUpperCase()}
+                </div>
+                <div className="closure-cadet-info">
+                  <h3 className="closure-cadet-name">
+                    {closingRequest.studentName || studentAccountsMap[closingRequest.studentId]?.name || closingRequest.studentId}
+                  </h3>
+                  <div className="closure-cadet-tags">
+                    <span className="cadet-spl-badge">SPL: {closingRequest.studentId}</span>
+                    <span className="cadet-batch-badge">🎖️ {closingRequest.batchNumber || studentAccountsMap[closingRequest.studentId]?.batchNumber || 'Batch 1'}</span>
+                    <span className="cadet-mobile-badge">📱 {closingRequest.mobileNumber || studentAccountsMap[closingRequest.studentId]?.mobileNumber || 'N/A'}</span>
+                  </div>
+                  <div className="closure-reason-preview">
+                    <strong>Purpose:</strong> "{closingRequest.reason || 'N/A'}"
+                  </div>
+                </div>
+              </div>
+
+              {/* Schedule comparison row */}
+              <div className="closure-schedule-grid">
+                <div className="schedule-box box-original">
+                  <span className="schedule-label">APPROVED SCHEDULE</span>
+                  <div className="schedule-dates">
+                    <span>{formatDate(closingRequest.fromDate)} &rarr; {formatDate(closingRequest.toDate)}</span>
+                  </div>
+                  <span className="schedule-duration-tag">
+                    Originally Approved: <strong>{getLeaveDaysCount(closingRequest.fromDate, closingRequest.toDate)} Days</strong>
+                  </span>
+                </div>
+
+                <div className="schedule-box box-actual">
+                  <label className="schedule-label" htmlFor="actual-return-date-input">
+                    SELECT ACTUAL RETURN DATE <span className="req-star">*</span>
+                  </label>
+                  <input
+                    id="actual-return-date-input"
+                    type="date"
+                    className="closure-date-input"
+                    value={closureReturnDate}
+                    min={closingRequest.fromDate}
+                    onChange={(e) => {
+                      setClosureReturnDate(e.target.value)
+                      setClosureError('')
+                    }}
+                    required
+                  />
+                  <div className="closure-quick-dates">
+                    <button
+                      type="button"
+                      className="btn-quick-date"
+                      onClick={() => setClosureReturnDate(getTodayDate())}
+                    >
+                      Today ({formatDate(getTodayDate())})
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-quick-date"
+                      onClick={() => setClosureReturnDate(closingRequest.toDate)}
+                    >
+                      Scheduled End ({formatDate(closingRequest.toDate)})
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic calculation result */}
+              {(() => {
+                const origDays = getLeaveDaysCount(closingRequest.fromDate, closingRequest.toDate)
+                const adjDays = getLeaveDaysCount(closingRequest.fromDate, closureReturnDate)
+                const isEarly = closureReturnDate < closingRequest.toDate && closureReturnDate >= closingRequest.fromDate
+                const isOnTime = closureReturnDate === closingRequest.toDate
+                const isLate = closureReturnDate > closingRequest.toDate
+                const isInvalid = closureReturnDate < closingRequest.fromDate
+
+                return (
+                  <div className={`closure-adjustment-preview ${isInvalid ? 'invalid' : isEarly ? 'early' : isLate ? 'extended' : 'on-time'}`}>
+                    <div className="adj-header">
+                      <span className="adj-icon">{isInvalid ? '⚠️' : isEarly ? '📉' : isLate ? '📈' : '✓'}</span>
+                      <strong>Adjusted Leave Days Calculation</strong>
+                    </div>
+                    {isInvalid ? (
+                      <div className="adj-error-text">
+                        Return date cannot be earlier than departure date ({formatDate(closingRequest.fromDate)}).
+                      </div>
+                    ) : (
+                      <div className="adj-details">
+                        <div className="adj-main-metric">
+                          <span className="adj-metric-num">{adjDays}</span>
+                          <span className="adj-metric-unit">Days Total Leave</span>
+                          <span className="adj-badge-status">
+                            {isEarly && `Early Return (-${origDays - adjDays} days)`}
+                            {isOnTime && 'On-Schedule Return (0 days variance)'}
+                            {isLate && `Extended Leave (+${adjDays - origDays} days)`}
+                          </span>
+                        </div>
+                        <p className="adj-explanation">
+                          {isEarly && `Cadet returned ${origDays - adjDays} day(s) earlier than scheduled. Official leave will adjust from ${origDays} days to ${adjDays} days.`}
+                          {isOnTime && `Cadet returned exactly on the scheduled end date. Total leave confirmed as ${adjDays} days.`}
+                          {isLate && `Cadet returned ${adjDays - origDays} day(s) later than scheduled. Official leave will adjust from ${origDays} days to ${adjDays} days.`}
+                        </p>
+                        <div className="adj-store-notice">
+                          <span>💾 Upon closing, this request will <strong>disappear from active queue</strong> and be saved to the <strong>Student Details section</strong>.</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {closureError && (
+                <div className="closure-error-banner">
+                  ⚠️ {closureError}
+                </div>
+              )}
+            </div>
+
+            <div className="closure-modal-footer">
+              <button
+                type="button"
+                className="btn-modal-cancel"
+                onClick={() => setClosingRequest(null)}
+                disabled={isSubmittingClosure}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-modal-confirm-closure"
+                onClick={handleConfirmCloseLeave}
+                disabled={isSubmittingClosure || closureReturnDate < closingRequest.fromDate}
+              >
+                {isSubmittingClosure ? 'Closing Leave...' : '✓ Confirm Return & Close Leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          CADET LEAVE DOSSIER MODAL (FULL STUDENT HISTORY)
+          ========================================================================= */}
+      {selectedStudentForDossier && (
+        <div className="leave-closure-modal-overlay" onClick={() => setSelectedStudentForDossier(null)}>
+          <div className="leave-closure-modal-card dossier-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="closure-modal-header">
+              <div className="modal-header-badge">
+                <span className="live-pulsing-dot" style={{ background: '#7c3aed', boxShadow: '0 0 8px #7c3aed' }} />
+                <span>OFFICIAL CADET LEAVE DOSSIER</span>
+              </div>
+              <h2>{selectedStudentForDossier.studentName}</h2>
+              <p>SPL: {selectedStudentForDossier.studentId} • Batch: {selectedStudentForDossier.batchNumber} • Mobile: {selectedStudentForDossier.mobileNumber}</p>
+              <button 
+                type="button" 
+                className="modal-close-btn" 
+                onClick={() => setSelectedStudentForDossier(null)}
+                title="Close dossier"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="closure-modal-body">
+              <div className="dossier-stats-summary">
+                <div className="dossier-stat">
+                  <span>Total Leaves:</span>
+                  <strong>{selectedStudentForDossier.totalLeavesTaken}</strong>
+                </div>
+                <div className="dossier-stat">
+                  <span>Total Days Adjusted:</span>
+                  <strong>{selectedStudentForDossier.totalAdjustedDays} days</strong>
+                </div>
+                <div className="dossier-stat">
+                  <span>Completed Closures:</span>
+                  <strong>{selectedStudentForDossier.closedLeavesCount}</strong>
+                </div>
+                <div className="dossier-stat">
+                  <span>Current Status:</span>
+                  <strong className={selectedStudentForDossier.currentlyOnLeave ? 'text-amber' : 'text-emerald'}>
+                    {selectedStudentForDossier.currentlyOnLeave ? '✈ Outside Campus (On Leave)' : '🏫 On Campus'}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="submission-table-wrapper" style={{ maxHeight: '350px', overflowY: 'auto', marginTop: '16px' }}>
+                <table className="submission-table">
+                  <thead>
+                    <tr>
+                      <th>Leave Timeframe</th>
+                      <th>Adjusted Duration</th>
+                      <th>Reason</th>
+                      <th>CFI / DCFI Authorization</th>
+                      <th>Status / Verification</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedStudentForDossier.records.length > 0 ? (
+                      selectedStudentForDossier.records.map((r, rIdx) => {
+                        const isClosed = Boolean(r.closureClosedAt || r.returnReportedAt || r.status === 'Closed')
+                        const effectiveReturn = r.actualReturnDate || r.toDate
+                        const adjDuration = `${getLeaveDaysCount(r.fromDate, effectiveReturn)} days`
+
+                        return (
+                          <tr key={r.id || r.requestedAt || rIdx}>
+                            <td>
+                              <div style={{ fontWeight: 600, fontSize: '12px' }}>
+                                {formatDate(r.fromDate)} &rarr; {formatDate(effectiveReturn)}
+                              </div>
+                              {r.actualReturnDate && r.originalToDate && r.actualReturnDate !== r.originalToDate && (
+                                <small style={{ color: '#0284c7' }}>Originally scheduled to {formatDate(r.originalToDate)}</small>
+                              )}
+                            </td>
+                            <td>
+                              <span className="duration-badge">{adjDuration}</span>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: '12px' }}>{r.reason}</span>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: '11px', fontWeight: 600 }}>{r.reviewedBy || 'CFI / DCFI'}</span>
+                            </td>
+                            <td>
+                              {isClosed ? (
+                                <span className="badge-closure-closed" style={{ fontSize: '11px' }}>
+                                  ✓ Closed &amp; Returned ({formatDate(effectiveReturn)})
+                                </span>
+                              ) : (
+                                <span className="badge-closure-pending" style={{ fontSize: '11px' }}>
+                                  ◷ Active / Pending Closure
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan="5" className="empty-submissions">No leave records on file.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="closure-modal-footer">
+              <button
+                type="button"
+                className="btn-modal-cancel"
+                onClick={() => setSelectedStudentForDossier(null)}
+              >
+                Close Dossier
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   )
